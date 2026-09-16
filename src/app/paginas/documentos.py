@@ -17,7 +17,13 @@ import streamlit as st
 from app.estado import encabezado_carga, es_admin, usuario_actual
 from nucleo import indice, nube
 from nucleo.config import EXTENSIONES_SOPORTADAS, TAM_MAX_MB
-from nucleo.modelo import estado as estado_modelo, listar_modelos
+from nucleo.modelo import (
+    estado as estado_modelo,
+    guardar_modelo_activo,
+    listar_modelos,
+    modelos_para_conversar,
+    probar_modelo,
+)
 from nucleo.util import sello_legible, tam_legible
 
 if not es_admin():
@@ -147,15 +153,33 @@ with st.expander("🔧 Mantenimiento y diagnóstico"):
     (st.success if ok_modelo else st.warning)(f"Modelo: {msg_modelo}")
 
     st.markdown(
-        "**Ver los modelos que reconoce la llave.** Sirve para no adivinar "
-        "el nombre: un nombre inventado devuelve 404 y parece un error de "
-        "la app cuando es un dato mal escrito en los Secrets."
+        "**Elegir y probar el modelo.** El listado del proveedor no "
+        "garantiza que un modelo atienda conversación: los de imagen, "
+        "audio o embeddings no sirven. La única prueba de que funciona es "
+        "preguntarle. Lo que elijas acá manda sobre los Secrets y queda "
+        "guardado, sin necesidad de volver a desplegar."
     )
-    if st.button("🔎 Consultar modelos disponibles", key="_doc_modelos"):
+    if st.button("🔎 Consultar modelos del proveedor", key="_doc_modelos"):
         nombres, detalle = listar_modelos()
+        st.session_state["_modelos_listados"] = nombres
         st.caption(detalle)
-        if nombres:
-            st.code("\n".join(nombres), language="text")
+
+    _nombres = st.session_state.get("_modelos_listados", [])
+    if _nombres:
+        _chat = modelos_para_conversar(_nombres)
+        c1, c2 = st.columns([3, 1])
+        _elegido = c1.selectbox(
+            f"Modelos que sirven para conversar ({len(_chat)} de {len(_nombres)})",
+            _chat, key="_doc_modelo_sel")
+        if c2.button("Probar", key="_doc_probar_modelo"):
+            ok_p, detalle_p = probar_modelo(_elegido)
+            (st.success if ok_p else st.error)(detalle_p)
+        if st.button(f"✅ Usar '{_elegido}' de ahora en adelante",
+                     key="_doc_activar_modelo"):
+            st.info(guardar_modelo_activo(_elegido, usuario_actual()))
+            st.rerun()
+        with st.expander("Ver la lista completa que devolvió el proveedor"):
+            st.code("\n".join(_nombres), language="text")
 
     st.divider()
     st.markdown(

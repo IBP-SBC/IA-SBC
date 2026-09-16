@@ -24,7 +24,7 @@ from pathlib import Path
 # ── Identidad ────────────────────────────────────────────────────────
 APP_NOMBRE = "IA · SBC"
 APP_SUBTITULO = "Asistente de decisiones de la Sociedad Bíblica Colombiana"
-APP_VERSION = "1.1.0"
+APP_VERSION = "1.1.1"
 
 # ── Rutas locales ────────────────────────────────────────────────────
 # parents[2] = raíz del repo (src/nucleo/config.py → src/ → raíz)
@@ -55,7 +55,11 @@ TIMEOUT_NUBE = 60               # segundos; los PDF grandes tardan
 # Si un nombre cambia, se corrige en los Secrets sin tocar código, y la
 # app puede listar los modelos reales del proveedor para no adivinar.
 MODELO_DEFECTO_ANTHROPIC = "claude-sonnet-5"
-MODELO_DEFECTO_GOOGLE = "gemini-2.5-flash"
+# OJO: el nombre por defecto es solo un punto de partida. Google renombra,
+# retira y balancea modelos con frecuencia, y un modelo puede estar en la
+# lista y aun así no atender conversación. Por eso el modelo se elige y se
+# PRUEBA desde Documentos → Mantenimiento, sin tocar los Secrets.
+MODELO_DEFECTO_GOOGLE = "gemini-flash-latest"
 BASE_GOOGLE_OPENAI = "https://generativelanguage.googleapis.com/v1beta/openai"
 
 # Modelos que el admin puede elegir en pantalla, por proveedor.

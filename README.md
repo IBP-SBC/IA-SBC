@@ -85,6 +85,13 @@ volver a romperse, se agrega un check a `auditoria_iasbc.py`.
 
 ## Versiones
 
+- **1.1.1** — los errores del proveedor muestran **lo que el proveedor
+  dijo** (antes un 404 se traducía a "no reconoce ese modelo" aunque el
+  modelo estuviera en la lista, y el detalle real se descartaba). Se
+  agregó elegir, **probar** y activar el modelo desde Mantenimiento, con
+  la elección guardada en la nube: corregir el modelo ya no exige
+  redesplegar ni tocar los Secrets.
+
 - **1.1.0** — el proveedor del modelo se elige en los Secrets
   (`anthropic`, `google` o cualquiera compatible con OpenAI) y, si no hay
   ninguno, la app funciona en **modo búsqueda**: muestra los pasajes

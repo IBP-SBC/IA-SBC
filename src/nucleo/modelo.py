@@ -62,7 +62,13 @@ from nucleo.config import (
     MODELO_DEFECTO_ANTHROPIC,
     MODELO_DEFECTO_GOOGLE,
 )
+from nucleo import nube
 from nucleo.instrucciones import leer_instrucciones
+
+# Archivo de estado donde se guarda el modelo elegido desde la app. Vive
+# en el bucket, así sobrevive al reinicio y no obliga a editar los Secrets
+# (que exigen redesplegar y que solo puede tocar quien tenga esa cuenta).
+ARCHIVO_MODELO = "modelo_activo.json"
 
 API_ANTHROPIC = "https://api.anthropic.com/v1/messages"
 VERSION_ANTHROPIC = "2023-06-01"   # versión del contrato de la API, no del modelo
@@ -173,8 +179,54 @@ def configuracion() -> dict | None:
     elif proveedor == "anthropic":
         modelo = modelo or MODELO_DEFECTO_ANTHROPIC
 
+    # El modelo elegido DESDE LA APP manda sobre el de los Secrets: es el
+    # que se puede corregir en caliente cuando el proveedor renombra o
+    # retira un modelo, sin esperar un despliegue.
+    elegido = leer_modelo_activo()
+    if elegido:
+        modelo = elegido
+
     return {"proveedor": proveedor, "api_key": api_key,
             "modelo": modelo, "base_url": base_url}
+
+
+# ── Modelo elegido desde la app (override persistente) ───────────────
+
+def leer_modelo_activo() -> str:
+    """Nombre del modelo guardado desde Mantenimiento. '' si no hay."""
+    try:
+        import streamlit as st
+        if "_modelo_activo" in st.session_state:
+            return str(st.session_state["_modelo_activo"] or "")
+    except Exception:
+        st = None
+    datos = nube.leer_json_remoto(ARCHIVO_MODELO) or {}
+    nombre = str(datos.get("modelo", "") or "")
+    try:
+        if st is not None:
+            st.session_state["_modelo_activo"] = nombre
+    except Exception:
+        pass
+    return nombre
+
+
+def guardar_modelo_activo(nombre: str, usuario: str) -> str:
+    """Guarda el modelo elegido. Devuelve un mensaje para pantalla."""
+    nombre = (nombre or "").strip()
+    from nucleo.util import sello_ahora
+    datos = {"modelo": nombre, "usuario": usuario, "fecha": sello_ahora()}
+    ok = nube.subir_bytes(nube.clave_estado(ARCHIVO_MODELO),
+                          json.dumps(datos, ensure_ascii=False).encode("utf-8"))
+    try:
+        import streamlit as st
+        st.session_state["_modelo_activo"] = nombre
+    except Exception:
+        pass
+    if not nube.nube_activa():
+        return (f"Modelo '{nombre}' activo en esta sesión. Sin nube "
+                "configurada, se pierde al reiniciar.")
+    return (f"Modelo '{nombre}' guardado." if ok
+            else f"Modelo '{nombre}' activo, pero NO se pudo guardar en la nube.")
 
 
 def estado() -> tuple[bool, str]:
@@ -225,26 +277,110 @@ def listar_modelos() -> tuple[list[str], str]:
         if r.status_code != 200:
             return [], f"El proveedor respondió {r.status_code}: {r.text[:200]}"
         datos = r.json().get("data", [])
-        nombres = sorted(str(d.get("id", "")).split("/")[-1] for d in datos)
-        return [n for n in nombres if n], f"{len(nombres)} modelos disponibles."
+        nombres = sorted({str(d.get("id", "")).split("/")[-1] for d in datos})
+        nombres = [n for n in nombres if n]
+        return nombres, f"{len(nombres)} modelos disponibles."
     except Exception as e:
         return [], f"No se pudo consultar la lista de modelos: {e}"
 
 
+# Palabras que delatan un modelo que NO sirve para conversar. La lista de
+# Google trae 58 entradas y la mayoría son de imagen, audio, video,
+# traducción o embeddings: ofrecerlas todas es hacer que el usuario elija
+# mal y después ver un 404 que parece un error de la app.
+_NO_CONVERSAN = ("embedding", "tts", "image", "audio", "video", "veo",
+                 "lyria", "nano-banana", "transcribe", "translate", "live",
+                 "robotics", "computer-use", "aqa", "deep-research")
+
+
+def modelos_para_conversar(nombres: list[str]) -> list[str]:
+    """Filtra la lista del proveedor dejando los que sirven para chat."""
+    return [n for n in nombres
+            if not any(p in n.lower() for p in _NO_CONVERSAN)]
+
+
+def probar_modelo(nombre: str) -> tuple[bool, str]:
+    """
+    Hace una llamada mínima y REAL al modelo, sin streaming, y devuelve
+    exactamente lo que respondió el proveedor.
+
+    Existe porque el listado de modelos no garantiza que un modelo atienda
+    conversación: la única prueba de que sirve es preguntarle.
+    """
+    cfg = configuracion()
+    if cfg is None or requests is None:
+        return False, "Sin proveedor configurado."
+    nombre = (nombre or cfg["modelo"]).strip()
+    prueba = [{"role": "user", "content": "Respondé solo con la palabra: listo"}]
+    try:
+        if cfg["proveedor"] == "anthropic":
+            r = requests.post(
+                API_ANTHROPIC,
+                headers={"x-api-key": cfg["api_key"],
+                         "anthropic-version": VERSION_ANTHROPIC,
+                         "content-type": "application/json"},
+                json={"model": nombre, "max_tokens": 20, "messages": prueba},
+                timeout=60)
+        else:
+            r = requests.post(
+                f"{cfg['base_url']}/chat/completions",
+                headers={"Authorization": f"Bearer {cfg['api_key']}",
+                         "Content-Type": "application/json"},
+                json={"model": nombre, "max_tokens": 20, "messages": prueba},
+                timeout=60)
+    except Exception as e:
+        return False, f"No se pudo llegar al proveedor: {e}"
+    if r.status_code == 200:
+        return True, f"'{nombre}' responde correctamente."
+    return False, _mensaje_de_error(r.status_code, r.text)
+
+
+def _detalle_del_proveedor(cuerpo: str) -> str:
+    """
+    Saca el mensaje que realmente mandó el proveedor. Los dos formatos que
+    usamos lo traen en {'error': {'message': ...}}; si no se puede leer, se
+    devuelve el texto crudo recortado. NUNCA se descarta: el detalle es lo
+    único que permite diagnosticar.
+    """
+    try:
+        datos = json.loads(cuerpo)
+        error = datos.get("error", datos)
+        if isinstance(error, dict):
+            for clave in ("message", "detail", "status"):
+                if error.get(clave):
+                    return str(error[clave])[:400]
+    except Exception:
+        pass
+    return " ".join(str(cuerpo).split())[:400]
+
+
 def _mensaje_de_error(status: int, cuerpo: str) -> str:
-    """Traduce el código HTTP a algo accionable, no a un stack trace."""
+    """
+    Traduce el código HTTP a algo accionable Y muestra lo que dijo el
+    proveedor.
+
+    Este detalle faltaba hasta la v1.1.0: ante un 404 la app decía "no
+    reconoce ese modelo" aunque el modelo estuviera en la lista, y el
+    mensaje real del proveedor —el que decía qué pasaba de verdad— se
+    tiraba a la basura. Un error maquillado es peor que un error crudo.
+    """
+    detalle = _detalle_del_proveedor(cuerpo)
     if status in (401, 403):
-        return ("⚠️ La llave del modelo no es válida, fue revocada o no "
-                "tiene permiso sobre ese modelo.")
-    if status == 404:
-        return ("⚠️ El proveedor no reconoce ese modelo. Revisá el nombre "
-                "exacto en Documentos → Mantenimiento → ver modelos.")
-    if status == 429:
-        return ("⚠️ Se alcanzó el límite de peticiones del proveedor (429). "
-                "En las capas gratuitas es normal: esperá un minuto.")
-    if status == 400 and "credit" in cuerpo.lower():
-        return "⚠️ La cuenta no tiene saldo disponible."
-    return f"⚠️ El proveedor respondió {status}: {cuerpo[:300]}"
+        pista = ("La llave no es válida, fue revocada o no tiene permiso "
+                 "sobre ese modelo.")
+    elif status == 404:
+        pista = ("El proveedor no atendió la petición para ese modelo. Puede "
+                 "ser el nombre, o que ese modelo no acepte conversación "
+                 "(los de imagen, audio, video o embeddings no sirven). "
+                 "Probalo en Documentos → Mantenimiento → Probar modelo.")
+    elif status == 429:
+        pista = ("Se alcanzó el límite de peticiones del proveedor. En las "
+                 "capas gratuitas es normal: esperá un minuto.")
+    elif status == 400 and "credit" in cuerpo.lower():
+        pista = "La cuenta no tiene saldo disponible."
+    else:
+        pista = "El proveedor rechazó la petición."
+    return f"⚠️ **{status}** · {pista}\n\n> Dijo el proveedor: {detalle}"
 
 
 # ════════════════════════════════════════════════════════════════════

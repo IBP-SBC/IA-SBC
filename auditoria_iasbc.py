@@ -204,6 +204,22 @@ _lineas = _fuente_modelo.splitlines()
 check("Un solo lugar lee el protocolo SSE",
       sum(1 for l in _lineas if "def _eventos_sse" in l) == 1,
       "duplicar el parser es duplicar los bugs")
+_err404 = modelo._mensaje_de_error(
+    404, '{"error": {"message": "models/x is not found for API version v1beta",'
+         ' "status": "NOT_FOUND"}}')
+check("Un error del proveedor muestra lo que el proveedor dijo",
+      "is not found for API version" in _err404,
+      "esconder el detalle del error fue un bug real de la v1.1.0: la app "
+      "culpaba al nombre del modelo cuando el modelo estaba en la lista")
+check("El error también dice qué hacer, no solo el código",
+      "Probar modelo" in _err404 or "conversación" in _err404)
+_todos = ["gemini-3.5-flash", "gemini-embedding-2", "veo-3.1-generate-preview",
+          "gemini-2.5-flash-preview-tts", "nano-banana-pro-preview",
+          "gemini-flash-latest", "gemini-2.5-flash-image"]
+_chat = modelo.modelos_para_conversar(_todos)
+check("Se filtran los modelos que no conversan (imagen, audio, video…)",
+      set(_chat) == {"gemini-3.5-flash", "gemini-flash-latest"},
+      f"quedaron: {_chat}")
 check("Google se atiende por la base compatible con OpenAI",
       "generativelanguage.googleapis.com" in
       (RAIZ / "src/nucleo/config.py").read_text(encoding="utf-8"),
