@@ -17,6 +17,7 @@ import streamlit as st
 from app.estado import encabezado_carga, es_admin, usuario_actual
 from nucleo import indice, nube
 from nucleo.config import EXTENSIONES_SOPORTADAS, TAM_MAX_MB
+from nucleo.modelo import estado as estado_modelo, listar_modelos
 from nucleo.util import sello_legible, tam_legible
 
 if not es_admin():
@@ -142,6 +143,21 @@ with st.expander("🔧 Mantenimiento y diagnóstico"):
     ok, msg = nube.probar_conexion()
     (st.success if ok else st.error)(f"Supabase: {msg}")
 
+    ok_modelo, msg_modelo = estado_modelo()
+    (st.success if ok_modelo else st.warning)(f"Modelo: {msg_modelo}")
+
+    st.markdown(
+        "**Ver los modelos que reconoce la llave.** Sirve para no adivinar "
+        "el nombre: un nombre inventado devuelve 404 y parece un error de "
+        "la app cuando es un dato mal escrito en los Secrets."
+    )
+    if st.button("🔎 Consultar modelos disponibles", key="_doc_modelos"):
+        nombres, detalle = listar_modelos()
+        st.caption(detalle)
+        if nombres:
+            st.code("\n".join(nombres), language="text")
+
+    st.divider()
     st.markdown(
         "**Reconstruir el índice** vuelve a leer todos los originales y "
         "rearma los fragmentos desde cero. Se usa si se cambió el tamaño "

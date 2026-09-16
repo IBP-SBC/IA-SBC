@@ -13,7 +13,7 @@ from __future__ import annotations
 import streamlit as st
 
 from app.estado import es_admin, usuario_actual
-from nucleo.claude import REGLAS_FIJAS
+from nucleo.modelo import REGLAS_FIJAS
 from nucleo.instrucciones import (
     guardar_instrucciones,
     leer_instrucciones,

@@ -36,7 +36,7 @@ config.ESTADO_DIR.mkdir(parents=True, exist_ok=True)
 
 import nucleo.indice as indice  # noqa: E402
 import nucleo.nube as nube  # noqa: E402
-from nucleo import claude, extraccion, util  # noqa: E402
+from nucleo import extraccion, modelo, util  # noqa: E402
 
 # El módulo indice importó las rutas por valor: hay que apuntarlas al tmp.
 indice.DOCS_DIR = config.DOCS_DIR
@@ -171,23 +171,43 @@ check("Una pregunta sin términos buscables devuelve vacío",
       "con solo palabras vacías no se puede rankear: no hay que inventar un orden")
 
 print("\n═══ 6. CONTEXTO QUE VIAJA AL MODELO ═══")
-system = claude.construir_system(res)
+system = modelo.construir_system(res)
 check("El system incluye las instrucciones del negocio",
       "Sociedad Bíblica Colombiana" in system or "SBC" in system)
 check("El system incluye las reglas fijas", "NO NEGOCIABLES" in system)
 check("Los fragmentos van etiquetados para poder citarlos", "[F1]" in system)
 import pandas as _pd  # noqa: E402
 check("Sin fragmentos, se le dice al modelo que NO hay respaldo",
-      "NO SE ENCONTRÓ" in claude.construir_system(_pd.DataFrame()),
+      "NO SE ENCONTRÓ" in modelo.construir_system(_pd.DataFrame()),
       "sin este aviso, el modelo responde de memoria y parece documentado")
 
-_fuente_claude = (RAIZ / "src/nucleo/claude.py").read_text(encoding="utf-8")
+_fuente_modelo = (RAIZ / "src/nucleo/modelo.py").read_text(encoding="utf-8")
 check("No se envía 'temperature' a la API",
-      '"temperature"' not in _fuente_claude,
+      '"temperature"' not in _fuente_modelo,
       "en los modelos 5 cualquier temperatura distinta del defecto da error 400")
 check("La llave de la API no está escrita en el código",
-      "sk-ant-" not in _fuente_claude.replace('sk-ant-..."', ""),
+      "sk-ant-" not in _fuente_modelo.replace('sk-ant-..."', ""),
       "una llave en el repositorio es una llave quemada")
+
+print("\n═══ 6-bis. PROVEEDOR DEL MODELO ═══")
+check("Sin proveedor configurado, la app NO truena",
+      modelo.configuracion() is None and modelo.estado()[0] is False,
+      "sin llave la app debe caer en modo búsqueda, no en un error")
+_salida = "".join(modelo.responder_streaming("lote minimo", [], res))
+check("Sin proveedor, responde con los PASAJES y no inventa",
+      "Modo búsqueda" in _salida and "800" in _salida,
+      "el modo búsqueda debe mostrar el contenido real encontrado")
+check("El modo búsqueda cita el documento de cada pasaje",
+      "Plan prueba.txt" in _salida,
+      "un pasaje sin fuente no se puede verificar")
+_lineas = _fuente_modelo.splitlines()
+check("Un solo lugar lee el protocolo SSE",
+      sum(1 for l in _lineas if "def _eventos_sse" in l) == 1,
+      "duplicar el parser es duplicar los bugs")
+check("Google se atiende por la base compatible con OpenAI",
+      "generativelanguage.googleapis.com" in
+      (RAIZ / "src/nucleo/config.py").read_text(encoding="utf-8"),
+      "sin esa base habría que escribir un segundo cliente completo")
 
 print("\n═══ 7. BORRADO Y GUARDA ANTI-PISADO ═══")
 msg = indice.eliminar_documento("Plan prueba v2.txt")

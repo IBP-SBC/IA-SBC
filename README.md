@@ -73,7 +73,9 @@ volver a romperse, se agrega un check a `auditoria_iasbc.py`.
 | Decisión | Por qué |
 |---|---|
 | Búsqueda **BM25 léxica**, no embeddings | Sin segunda cuenta ni costo por documento; es explicable y funciona muy bien con vocabulario propio ("S5", "encuadernación", un ISBN). Los embeddings son el paso 2, no el 1. |
-| API de Claude por **requests + SSE**, no el SDK | El SDK pasó a 1.0 en agosto de 2026 con cambios que rompen. Ya hablamos con Supabase por REST: una dependencia menos y el código a la vista. |
+| API por **requests + SSE**, no el SDK | El SDK de Anthropic pasó a 1.0 en agosto de 2026 con cambios que rompen. Ya hablamos con Supabase por REST: una dependencia menos y el código a la vista. |
+| **Proveedor configurable** (`anthropic` / `google` / compatible OpenAI) | La app tiene que poder salir hoy con la cuenta que haya hoy, y cambiar después sin tocar código. Google se atiende por su base compatible con OpenAI, así que hay un solo cliente para todos menos Claude. |
+| **Modo búsqueda** cuando no hay llave | Sin modelo no se redacta: se muestran los pasajes con su fuente. Menos cómodo y honesto; además sirve como buscador desde el primer día. |
 | **No se envía `temperature`** | En los modelos 5, cualquier valor distinto del defecto devuelve error 400. |
 | El **nombre del archivo es la identidad** del documento | Subir otra vez `Informe 2025.pdf` lo actualiza. `Informe 2025 v2.pdf` es otro documento: no se adivinan identidades parecidas. |
 | **Guarda anti-pisado** del registro | El disco de Streamlit Cloud es efímero. En `sbc_ventas` ese patrón borró histórico tres veces. |
@@ -83,6 +85,11 @@ volver a romperse, se agrega un check a `auditoria_iasbc.py`.
 
 ## Versiones
 
+- **1.1.0** — el proveedor del modelo se elige en los Secrets
+  (`anthropic`, `google` o cualquiera compatible con OpenAI) y, si no hay
+  ninguno, la app funciona en **modo búsqueda**: muestra los pasajes
+  encontrados con su fuente en vez de inventar una respuesta. Se agregó
+  el listado de modelos reales del proveedor y el cuaderno de Colab.
 - **1.0.0** — primera versión. Chat con fuentes, carga y actualización de
   documentos por nombre, editor de `main.md`, roles admin/colaborador,
   persistencia en Supabase.

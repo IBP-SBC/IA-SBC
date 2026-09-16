@@ -14,13 +14,8 @@ import streamlit as st
 
 from app.estado import es_admin, usuario_actual
 from nucleo import indice
-from nucleo.claude import responder_streaming
-from nucleo.config import (
-    MODELOS_DISPONIBLES,
-    MODELO_DEFECTO,
-    TOP_K_DEFECTO,
-    TOP_K_MAX,
-)
+from nucleo.modelo import estado as estado_modelo, responder_streaming
+from nucleo.config import MODELOS_SUGERIDOS, TOP_K_DEFECTO, TOP_K_MAX
 from nucleo.util import recortar, sello_ahora
 
 st.markdown("## 💬 Conversar")
@@ -59,21 +54,35 @@ with st.sidebar:
     k = st.slider("Fragmentos que reviso", 4, TOP_K_MAX, TOP_K_DEFECTO,
                   key="_conv_k",
                   help="Más fragmentos = respuesta más completa y más lenta.")
+    # El modelo se elige SEGÚN EL PROVEEDOR configurado en los Secrets.
+    # Si el proveedor no es Claude, no hay lista sugerida: se usa el que
+    # diga la configuración (inventar nombres es la vía rápida a un 404).
+    modelo = None
     if es_admin():
-        modelo = st.selectbox(
-            "Modelo", list(MODELOS_DISPONIBLES),
-            index=list(MODELOS_DISPONIBLES).index(MODELO_DEFECTO),
-            format_func=lambda m: MODELOS_DISPONIBLES[m],
-            key="_conv_modelo",
-        )
-    else:
-        modelo = MODELO_DEFECTO
+        from nucleo.modelo import configuracion as _cfg_modelo
+        _cfg = _cfg_modelo()
+        _sugeridos = MODELOS_SUGERIDOS.get(
+            (_cfg or {}).get("proveedor", ""), {})
+        if _sugeridos:
+            _actual = (_cfg or {}).get("modelo", "")
+            _opciones = list(_sugeridos)
+            modelo = st.selectbox(
+                "Modelo", _opciones,
+                index=_opciones.index(_actual) if _actual in _opciones else 0,
+                format_func=lambda m: _sugeridos[m],
+                key="_conv_modelo",
+            )
     if st.button("🧹 Nueva conversación", key="_conv_limpiar",
                  use_container_width=True):
         st.session_state["_chat"] = []
         st.rerun()
     st.caption(f"📚 {estado['documentos']} documentos · "
                f"{estado['fragmentos']:,} fragmentos".replace(",", "."))
+
+# Si no hay proveedor, la app no falla: avisa y pasa a modo búsqueda.
+_listo_modelo, _msg_modelo = estado_modelo()
+if not _listo_modelo:
+    st.warning(f"🔎 {_msg_modelo}")
 
 # ── Historial ────────────────────────────────────────────────────────
 if "_chat" not in st.session_state:

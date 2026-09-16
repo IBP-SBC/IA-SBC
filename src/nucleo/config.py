@@ -24,7 +24,7 @@ from pathlib import Path
 # ── Identidad ────────────────────────────────────────────────────────
 APP_NOMBRE = "IA · SBC"
 APP_SUBTITULO = "Asistente de decisiones de la Sociedad Bíblica Colombiana"
-APP_VERSION = "1.0.0"
+APP_VERSION = "1.1.0"
 
 # ── Rutas locales ────────────────────────────────────────────────────
 # parents[2] = raíz del repo (src/nucleo/config.py → src/ → raíz)
@@ -46,14 +46,25 @@ PREFIJO_DOCS = "documentos"     # bucket/documentos/<archivo>
 PREFIJO_ESTADO = "estado"       # bucket/estado/registro.json, fragmentos.parquet, main.md
 TIMEOUT_NUBE = 60               # segundos; los PDF grandes tardan
 
-# ── Modelo ───────────────────────────────────────────────────────────
-# IDs verificados en la documentación de la API (septiembre 2026).
-# OJO: en los modelos 5 el 'temperature' distinto del valor por defecto
-# devuelve error 400. Por eso NO se envía temperatura desde esta app.
-MODELO_DEFECTO = "claude-sonnet-5"
-MODELOS_DISPONIBLES = {
-    "claude-sonnet-5": "Sonnet 5 · rápido y suficiente para el día a día",
-    "claude-opus-5": "Opus 5 · para análisis largos y difíciles",
+# ── Modelo de lenguaje ───────────────────────────────────────────────
+# El proveedor NO se decide acá: se elige en los Secrets (ver
+# nucleo/modelo.py). Acá solo van los valores por defecto y la base de
+# Google, que es fija y pública.
+#
+# Nombres verificados en la documentación de cada proveedor (sep-2026).
+# Si un nombre cambia, se corrige en los Secrets sin tocar código, y la
+# app puede listar los modelos reales del proveedor para no adivinar.
+MODELO_DEFECTO_ANTHROPIC = "claude-sonnet-5"
+MODELO_DEFECTO_GOOGLE = "gemini-2.5-flash"
+BASE_GOOGLE_OPENAI = "https://generativelanguage.googleapis.com/v1beta/openai"
+
+# Modelos que el admin puede elegir en pantalla, por proveedor.
+MODELOS_SUGERIDOS = {
+    "anthropic": {
+        "claude-sonnet-5": "Sonnet 5 · rápido y suficiente para el día a día",
+        "claude-opus-5": "Opus 5 · para análisis largos y difíciles",
+    },
+    "openai_compatible": {},   # se consultan al proveedor en Mantenimiento
 }
 MAX_TOKENS_RESPUESTA = 4000
 
