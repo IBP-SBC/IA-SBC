@@ -1,0 +1,25 @@
+LEEME PRIMERO . IA-SBC
+======================
+
+QUE ES
+Un asistente que responde preguntas del dia a dia de la SBC usando los
+documentos oficiales que se le cargan, citando siempre la fuente.
+
+EN LA NUBE (lo normal)
+  https://iasbc.streamlit.app
+No hay que instalar nada. Se entra con usuario y clave.
+
+EN ESTE COMPUTADOR (solo para probar o desarrollar)
+  Mac:      doble clic en 1-Instalar.command y luego 2-Abrir.command
+  Windows:  doble clic en 1-Instalar.bat y luego 2-Abrir.bat
+  Requiere Python 3.11 o superior.
+
+SI MAC BLOQUEA LOS ARCHIVOS
+  Abri la Terminal en esta carpeta y corre:  xattr -cr .
+
+SI WINDOWS BLOQUEA LOS ARCHIVOS
+  Clic derecho en el .bat > Propiedades > Desbloquear.
+
+LAS LLAVES (API de Claude y Supabase) NO ESTAN EN ESTA CARPETA.
+Van en los Secrets de Streamlit Cloud, o en un archivo local
+.streamlit/secrets.toml que NUNCA se sube a GitHub.
