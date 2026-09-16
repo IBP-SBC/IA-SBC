@@ -85,6 +85,12 @@ volver a romperse, se agrega un check a `auditoria_iasbc.py`.
 
 ## Versiones
 
+- **1.1.2** — las tildes y las eñes de la respuesta llegaban rotas
+  ("Activo-PÃºblico"): requests asume ISO-8859-1 cuando el servidor manda
+  `text/*` sin declarar el juego de caracteres. Ahora el stream se
+  decodifica como UTF-8 explícitamente, que es lo que define el protocolo
+  SSE. Tres checks nuevos lo vigilan.
+
 - **1.1.1** — los errores del proveedor muestran **lo que el proveedor
   dijo** (antes un 404 se traducía a "no reconoce ese modelo" aunque el
   modelo estuviera en la lista, y el detalle real se descartaba). Se

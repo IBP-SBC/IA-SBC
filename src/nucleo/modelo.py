@@ -507,9 +507,22 @@ def _eventos_sse(respuesta):
     Lee el protocolo SSE (líneas 'data: {json}') y devuelve los eventos ya
     convertidos. Está en un solo lugar porque los dos proveedores usan el
     mismo transporte aunque el contenido sea distinto.
+
+    LA DECODIFICACIÓN SE HACE ACÁ, A MANO, EN UTF-8. Por qué:
+    requests, cuando el servidor manda un tipo 'text/*' SIN declarar el
+    juego de caracteres, asume ISO-8859-1 (una regla vieja de HTTP). El
+    stream viene en UTF-8, así que las tildes y las eñes llegaban rotas:
+    "Activo-Público" se veía "Activo-PÃºblico". Y si requests no resuelve
+    ningún encoding, devuelve bytes: ahí ninguna línea empieza por "data:"
+    y la respuesta sale VACÍA sin un solo error. El protocolo SSE define
+    UTF-8, así que no hay nada que adivinar.
     """
-    for linea in respuesta.iter_lines(decode_unicode=True):
-        if not linea or not linea.startswith("data:"):
+    for linea in respuesta.iter_lines(decode_unicode=False):
+        if not linea:
+            continue
+        if isinstance(linea, bytes):
+            linea = linea.decode("utf-8", errors="replace")
+        if not linea.startswith("data:"):
             continue
         dato = linea[5:].strip()
         if dato == "[DONE]":

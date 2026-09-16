@@ -24,7 +24,7 @@ from pathlib import Path
 # ── Identidad ────────────────────────────────────────────────────────
 APP_NOMBRE = "IA · SBC"
 APP_SUBTITULO = "Asistente de decisiones de la Sociedad Bíblica Colombiana"
-APP_VERSION = "1.1.1"
+APP_VERSION = "1.1.2"
 
 # ── Rutas locales ────────────────────────────────────────────────────
 # parents[2] = raíz del repo (src/nucleo/config.py → src/ → raíz)

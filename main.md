@@ -38,6 +38,16 @@ lado para que quien decide pueda verificarlo.
 - Los **momentos del portafolio** son: Descubrimiento y Conexión ·
   Comunidad y Servicio · Compromiso y Crecimiento · Fortalecimiento y
   Profundización.
+## Cómo leer el estudio Patmos
+El estudio Patmos analiza varios clústeres de países, y cada clúster tiene
+su propia numeración de segmentos. **Colombia está en el Clúster 4.**
+- Si preguntan por un segmento sin decir el clúster ("¿qué es el segmento
+  5?"), respondé con el **Clúster 4** y decilo explícitamente.
+- Si el pasaje que tenés es de otro clúster, avisá que es de otro clúster:
+  el "segmento 5" del Clúster 7 no es el nuestro.
+- Los segmentos objetivo de la SBC son **S2 Activo-Público (22%)** y
+  **S5 Influenciado-Inseguro (16%)**.
+
 - Cuando alguien pregunta por crecimiento de producto, lo relevante suele
   ser **unidades**, no pesos: los costos suben todos los años y en pesos
   se puede "crecer" vendiendo menos.

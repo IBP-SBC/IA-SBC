@@ -225,6 +225,36 @@ check("Google se atiende por la base compatible con OpenAI",
       (RAIZ / "src/nucleo/config.py").read_text(encoding="utf-8"),
       "sin esa base habría que escribir un segundo cliente completo")
 
+print("\n═══ 6-ter. CODIFICACIÓN DEL STREAM (tildes y eñes) ═══")
+# Bug real de la v1.1.1: requests asume ISO-8859-1 cuando el servidor
+# manda 'text/*' sin charset, y las tildes llegaban rotas
+# ("Activo-Público" se veía "Activo-PÃºblico"). Se prueba con los TRES
+# casos posibles, con acentos reales.
+import io as _io  # noqa: E402
+import requests as _req  # noqa: E402
+from urllib3 import HTTPResponse as _HR  # noqa: E402
+
+_LINEA = ('data: {"choices":[{"delta":{"content":"Activo-Público qué año"}}]}'
+          '\n').encode("utf-8")
+
+
+def _respuesta_simulada(encoding):
+    r = _req.Response()
+    r.status_code = 200
+    r.encoding = encoding
+    r.raw = _HR(body=_io.BytesIO(_LINEA),
+                headers={"Content-Type": "text/event-stream"},
+                status=200, preload_content=False)
+    return r
+
+
+for _enc in ("ISO-8859-1", "utf-8", None):
+    _eventos = list(modelo._eventos_sse(_respuesta_simulada(_enc)))
+    _texto = "".join(e["choices"][0]["delta"]["content"] for e in _eventos)
+    check(f"Las tildes llegan bien con encoding={_enc}",
+          _texto == "Activo-Público qué año",
+          f"se recibió: {_texto!r}")
+
 print("\n═══ 7. BORRADO Y GUARDA ANTI-PISADO ═══")
 msg = indice.eliminar_documento("Plan prueba v2.txt")
 check("Eliminar saca el documento del registro",
