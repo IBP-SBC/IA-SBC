@@ -1,0 +1,8 @@
+# Configuración mínima.
+#
+# IMPORTANTE: NO definir [theme]. Cualquier valor ahí (aunque sea solo
+# primaryColor) hace que Streamlit asuma base = "light" y fuerce el modo
+# claro, ignorando la preferencia del sistema operativo del usuario.
+
+[browser]
+gatherUsageStats = false

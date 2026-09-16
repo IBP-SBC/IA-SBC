@@ -1,0 +1,17 @@
+# Datos: NUNCA van al repositorio. Los documentos de la SBC viven en
+# Supabase, no en GitHub (el repo puede ser público algún día y el
+# historial de git no se borra).
+data/documentos/*
+data/estado/*
+!data/documentos/.gitkeep
+!data/estado/.gitkeep
+
+# Secretos: la llave de la API y la de Supabase van en los Secrets de
+# Streamlit Cloud, jamás en un archivo versionado.
+.streamlit/secrets.toml
+*.env
+
+__pycache__/
+*.pyc
+.DS_Store
+.venv/
