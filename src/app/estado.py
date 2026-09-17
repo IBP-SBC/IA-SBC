@@ -47,8 +47,9 @@ def exigir_login() -> None:
         _sidebar_sesion()
         return
 
-    st.markdown(f"## 🔐 {APP_NOMBRE} · Iniciar sesión")
-    st.caption("Ingresá tu usuario y clave para entrar.")
+    from app.ui import aplicar_estilo, encabezado
+    aplicar_estilo()
+    encabezado(f"{APP_NOMBRE}", "Ingresá tu usuario y clave para entrar.", "🔐")
     with st.form("_form_login"):
         usuario = st.text_input("Usuario", key="_inp_user")
         clave = st.text_input("Clave", type="password", key="_inp_pass")

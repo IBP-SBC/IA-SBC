@@ -409,50 +409,141 @@ def _respuesta_modo_busqueda(fragmentos: pd.DataFrame):
 # LLAMADA
 # ════════════════════════════════════════════════════════════════════
 
+def turnos_validos(historial: list[dict], maximo: int = 10) -> list[dict]:
+    """
+    Deja solo los turnos que se le pueden mandar al proveedor.
+
+    Descarta los vacíos: un turno sin contenido deja dos mensajes del
+    mismo rol seguidos y el proveedor puede rechazar la conversación
+    entera desde ahí. Eso explica el caso real de "no respondió hasta que
+    reinicié la app": una respuesta vacía quedaba en el historial y
+    envenenaba todas las preguntas siguientes de esa sesión.
+    """
+    return [{"role": m["role"], "content": m["content"]}
+            for m in (historial or [])[-maximo:]
+            if m.get("role") in ("user", "assistant")
+            and str(m.get("content", "")).strip()]
+
+
+def mensaje_respuesta_vacia(motivo: str) -> str:
+    """Explica en palabras por qué el modelo no escribió nada."""
+    pista = {
+        "length": ("se quedó sin presupuesto de tokens antes de escribir "
+                   "(suele pasar cuando razona mucho antes de responder)"),
+        "max_tokens": "se quedó sin presupuesto de tokens antes de escribir",
+        "MAX_TOKENS": "se quedó sin presupuesto de tokens antes de escribir",
+        "content_filter": "el proveedor bloqueó la respuesta por sus filtros",
+        "SAFETY": "el proveedor bloqueó la respuesta por sus filtros",
+    }.get(str(motivo), f"el proveedor cerró la respuesta con el motivo '{motivo}'")
+    return (f"⚠️ **El modelo no devolvió texto** en dos intentos: {pista}.\n\n"
+            "Qué hacer: preguntá algo más acotado, bajá el número de "
+            "fragmentos en el panel de la izquierda, o probá otro modelo en "
+            "Documentos → Mantenimiento.")
+
+
 def responder_streaming(pregunta: str, historial: list[dict],
                         fragmentos: pd.DataFrame,
-                        modelo: str | None = None):
+                        modelo: str | None = None,
+                        diagnostico: dict | None = None):
     """
     Generador que entrega la respuesta por pedazos, para que el usuario vea
     avanzar el texto en vez de un spinner mudo.
 
     'historial' son los turnos previos SIN el turno nuevo: estas APIs no
     tienen memoria, se manda todo en cada llamada.
+
+    'diagnostico' es un diccionario opcional donde se anotan modelo,
+    tamaño del envío, duración, motivo de fin e intentos. La vista lo
+    muestra en un desplegable. Sirve para que "no respondió" deje de ser
+    un misterio.
+
+    POR QUÉ HAY UN REINTENTO (uno solo):
+    pasó en producción que una pregunta no obtuvo respuesta y la MISMA
+    pregunta funcionó después de reiniciar. Un stream puede terminar sin
+    una sola letra de texto: el modelo gasta todo su presupuesto de tokens
+    razonando antes de escribir, o el proveedor corta la conexión a mitad
+    de camino. Antes eso dejaba el chat MUDO, que es la peor forma de
+    fallar: el usuario no sabe si preguntar de nuevo, esperar o si la app
+    está rota. Ahora se reintenta una vez con el doble de presupuesto y,
+    si vuelve vacío, se explica qué pasó.
     """
+    import time
+
+    diag = diagnostico if isinstance(diagnostico, dict) else {}
+    diag.clear()
+
     if requests is None:
         yield "⚠️ Falta la librería 'requests' en el entorno."
         return
     cfg = configuracion()
     if cfg is None:
+        diag["modo"] = "búsqueda (sin proveedor configurado)"
         yield from _respuesta_modo_busqueda(fragmentos)
         return
 
     nombre_modelo = (modelo or cfg["modelo"]).strip()
     system = construir_system(fragmentos)
-    previos = [{"role": m["role"], "content": m["content"]}
-               for m in historial[-10:]          # últimos 5 pares
-               if m.get("role") in ("user", "assistant") and m.get("content")]
 
-    try:
-        if cfg["proveedor"] == "anthropic":
-            yield from _stream_anthropic(cfg, nombre_modelo, system,
-                                         previos, pregunta)
-        else:
-            yield from _stream_openai(cfg, nombre_modelo, system,
-                                      previos, pregunta)
-    except requests.exceptions.Timeout:
-        yield ("⚠️ La respuesta tardó demasiado y se cortó. Probá con una "
-               "pregunta más específica o con menos fragmentos.")
-    except Exception as e:
-        yield f"⚠️ Falló la llamada al modelo: {e}"
+    previos = turnos_validos(historial)   # sin turnos vacíos (ver arriba)
+
+    diag.update({
+        "modelo": nombre_modelo,
+        "proveedor": cfg["proveedor"],
+        "fragmentos": 0 if fragmentos is None else int(len(fragmentos)),
+        "caracteres_enviados": len(system) + sum(len(m["content"]) for m in previos),
+        "turnos_previos": len(previos),
+    })
+
+    inicio = time.time()
+    for intento in (1, 2):
+        presupuesto = MAX_TOKENS_RESPUESTA * intento   # el reintento pide el doble
+        recibido = 0
+        fin = {}
+        try:
+            if cfg["proveedor"] == "anthropic":
+                flujo = _stream_anthropic(cfg, nombre_modelo, system,
+                                          previos, pregunta, presupuesto, fin)
+            else:
+                flujo = _stream_openai(cfg, nombre_modelo, system,
+                                       previos, pregunta, presupuesto, fin)
+            for trozo in flujo:
+                recibido += len(trozo)
+                yield trozo
+        except requests.exceptions.Timeout:
+            diag.update({"intentos": intento, "motivo_fin": "timeout",
+                         "segundos": round(time.time() - inicio, 1)})
+            yield ("⚠️ La respuesta tardó demasiado y se cortó. Probá con una "
+                   "pregunta más específica o bajá los fragmentos que reviso.")
+            return
+        except Exception as e:
+            diag.update({"intentos": intento, "motivo_fin": f"excepción: {e}",
+                         "segundos": round(time.time() - inicio, 1)})
+            yield f"⚠️ Falló la llamada al modelo: {e}"
+            return
+
+        diag.update({"intentos": intento,
+                     "motivo_fin": fin.get("motivo", "desconocido"),
+                     "caracteres_recibidos": recibido,
+                     "segundos": round(time.time() - inicio, 1)})
+
+        if recibido > 0 or fin.get("error"):
+            return          # hubo respuesta, o ya se mostró el error del proveedor
+
+        if intento == 1:
+            yield ("_El modelo terminó sin escribir nada. Reintentando una vez "
+                   "con más espacio para la respuesta…_\n\n")
+
+    # Segundo intento también vacío: se explica, no se deja mudo.
+    yield mensaje_respuesta_vacia(diag.get("motivo_fin", "desconocido"))
 
 
 def _stream_anthropic(cfg: dict, modelo: str, system: str,
-                      previos: list[dict], pregunta: str):
-    """Formato propio de la API de Claude."""
+                      previos: list[dict], pregunta: str,
+                      presupuesto: int, fin: dict):
+    """Formato propio de la API de Claude. Anota en 'fin' cómo terminó."""
     cuerpo = {
         "model": modelo,
-        "max_tokens": MAX_TOKENS_RESPUESTA,
+        "max_tokens": presupuesto,
         "system": system,
         "messages": previos + [{"role": "user", "content": pregunta}],
         "stream": True,
@@ -463,6 +554,8 @@ def _stream_anthropic(cfg: dict, modelo: str, system: str,
     with requests.post(API_ANTHROPIC, headers=cabeceras, json=cuerpo,
                        stream=True, timeout=TIMEOUT_API) as r:
         if r.status_code != 200:
+            fin["error"] = True
+            fin["motivo"] = f"HTTP {r.status_code}"
             yield _mensaje_de_error(r.status_code, r.text)
             return
         for ev in _eventos_sse(r):
@@ -471,13 +564,17 @@ def _stream_anthropic(cfg: dict, modelo: str, system: str,
                 delta = ev.get("delta", {})
                 if delta.get("type") == "text_delta":
                     yield delta.get("text", "")
+            elif tipo == "message_delta":
+                fin["motivo"] = ev.get("delta", {}).get("stop_reason") or fin.get("motivo")
             elif tipo == "error":
+                fin["error"] = True
                 yield f"\n\n⚠️ {ev.get('error', {}).get('message', 'error')}"
                 return
 
 
 def _stream_openai(cfg: dict, modelo: str, system: str,
-                   previos: list[dict], pregunta: str):
+                   previos: list[dict], pregunta: str,
+                   presupuesto: int, fin: dict):
     """
     Formato de OpenAI: lo hablan Gemini (por su base compatible),
     OpenRouter, Groq, Azure y la propia OpenAI. Acá el 'system' va como
@@ -485,7 +582,7 @@ def _stream_openai(cfg: dict, modelo: str, system: str,
     """
     mensajes = ([{"role": "system", "content": system}] + previos
                 + [{"role": "user", "content": pregunta}])
-    cuerpo = {"model": modelo, "max_tokens": MAX_TOKENS_RESPUESTA,
+    cuerpo = {"model": modelo, "max_tokens": presupuesto,
               "messages": mensajes, "stream": True}
     cabeceras = {"Authorization": f"Bearer {cfg['api_key']}",
                  "Content-Type": "application/json"}
@@ -493,6 +590,8 @@ def _stream_openai(cfg: dict, modelo: str, system: str,
                        headers=cabeceras, json=cuerpo,
                        stream=True, timeout=TIMEOUT_API) as r:
         if r.status_code != 200:
+            fin["error"] = True
+            fin["motivo"] = f"HTTP {r.status_code}"
             yield _mensaje_de_error(r.status_code, r.text)
             return
         for ev in _eventos_sse(r):
@@ -500,6 +599,8 @@ def _stream_openai(cfg: dict, modelo: str, system: str,
                 trozo = (opcion.get("delta") or {}).get("content")
                 if trozo:
                     yield trozo
+                if opcion.get("finish_reason"):
+                    fin["motivo"] = opcion["finish_reason"]
 
 
 def _eventos_sse(respuesta):

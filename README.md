@@ -85,6 +85,17 @@ volver a romperse, se agrega un check a `auditoria_iasbc.py`.
 
 ## Versiones
 
+- **1.2.0** — dos cosas. (1) Cuando el modelo terminaba sin escribir una
+  sola letra, el chat quedaba **mudo** y la respuesta vacía se guardaba en
+  el historial, envenenando las preguntas siguientes de esa sesión (por eso
+  "reiniciar la app" lo arreglaba). Ahora se reintenta una vez con más
+  presupuesto, se explica el motivo real si vuelve a pasar, y los turnos
+  vacíos no se guardan ni se envían. Hay un desplegable con el detalle
+  técnico de cada respuesta, solo para admin. (2) Trabajo visual:
+  encabezados con la franja institucional, burbujas de chat, fuentes como
+  etiquetas, preguntas de arranque en botones y tarjetas de cifras en
+  Documentos, todo funcionando en modo claro y oscuro.
+
 - **1.1.2** — las tildes y las eñes de la respuesta llegaban rotas
   ("Activo-PÃºblico"): requests asume ISO-8859-1 cuando el servidor manda
   `text/*` sin declarar el juego de caracteres. Ahora el stream se

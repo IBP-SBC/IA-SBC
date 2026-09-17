@@ -13,6 +13,7 @@ from __future__ import annotations
 import streamlit as st
 
 from app.estado import es_admin, usuario_actual
+from app.ui import encabezado
 from nucleo.modelo import REGLAS_FIJAS
 from nucleo.instrucciones import (
     guardar_instrucciones,
@@ -24,9 +25,9 @@ if not es_admin():
     st.warning("Esta sección es solo para administradores.")
     st.stop()
 
-st.markdown("## 🧭 Instrucciones generales (main.md)")
-st.caption("Esto es lo primero que lee el asistente en CADA conversación. "
-           "Define quién es, cómo responde y qué no puede hacer.")
+encabezado("Instrucciones generales (main.md)",
+           "Esto es lo primero que lee el asistente en CADA conversación: "
+           "quién es, cómo responde y qué no puede hacer.", "🧭")
 
 actual = leer_instrucciones()
 

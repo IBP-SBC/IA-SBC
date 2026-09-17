@@ -31,7 +31,9 @@ st.set_page_config(
 )
 
 from app.estado import exigir_login, es_admin  # noqa: E402
+from app.ui import aplicar_estilo  # noqa: E402
 
+aplicar_estilo()
 exigir_login()
 
 # Hidratación: el disco de Streamlit Cloud arranca vacío tras un reboot.
@@ -45,7 +47,8 @@ if _resumen["documentos"] or _resumen["estado"]:
 with st.sidebar:
     st.markdown(f"### 💬 {APP_NOMBRE}")
     st.caption(APP_SUBTITULO)
-    st.caption(f"versión {APP_VERSION}")
+    st.caption(f"v{APP_VERSION}")
+    st.divider()
 
 _conversar = st.Page("paginas/conversacion.py", title="Conversar",
                      icon="💬", default=True)

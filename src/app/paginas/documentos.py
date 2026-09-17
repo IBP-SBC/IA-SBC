@@ -15,6 +15,7 @@ import pandas as pd
 import streamlit as st
 
 from app.estado import encabezado_carga, es_admin, usuario_actual
+from app.ui import encabezado, metricas
 from nucleo import indice, nube
 from nucleo.config import EXTENSIONES_SOPORTADAS, TAM_MAX_MB
 from nucleo.modelo import (
@@ -30,9 +31,9 @@ if not es_admin():
     st.warning("Esta sección es solo para administradores.")
     st.stop()
 
-st.markdown("## 📚 Documentos")
-st.caption("Lo que subas acá es TODO lo que el asistente sabe. "
-           "Ni más, ni menos.")
+encabezado("Documentos",
+           "Lo que subas acá es TODO lo que el asistente sabe. Ni más, ni menos.",
+           "📚")
 
 estado = indice.resumen_estado()
 encabezado_carga(
@@ -102,6 +103,13 @@ if archivos and st.button("⚙️ Procesar e indexar", type="primary",
     st.cache_resource.clear()   # el índice BM25 cambió: hay que recalcularlo
 
 st.divider()
+
+# Tres cifras, no más: cuánto sabe, de cuántas piezas y desde cuándo.
+metricas([
+    ("Documentos", f"{estado['documentos']}"),
+    ("Fragmentos", f"{estado['fragmentos']:,}".replace(",", ".")),
+    ("Caracteres indexados", f"{estado['caracteres']:,}".replace(",", ".")),
+])
 
 # ── Inventario ───────────────────────────────────────────────────────
 st.markdown("### 🗂️ Lo que hay cargado")

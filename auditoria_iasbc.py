@@ -255,6 +255,24 @@ for _enc in ("ISO-8859-1", "utf-8", None):
           _texto == "Activo-Público qué año",
           f"se recibió: {_texto!r}")
 
+print("\n═══ 6-quater. CUANDO EL MODELO NO ESCRIBE NADA ═══")
+# Caso real: una pregunta quedó sin respuesta y la MISMA pregunta
+# funcionó tras reiniciar la app. Dos causas posibles, las dos cubiertas.
+_hist = [{"role": "user", "content": "hola"},
+         {"role": "assistant", "content": ""},      # respuesta vacía guardada
+         {"role": "user", "content": "  "},          # turno en blanco
+         {"role": "sistema", "content": "x"}]        # rol inválido
+_validos = modelo.turnos_validos(_hist)
+check("Los turnos vacíos no se le mandan al proveedor",
+      _validos == [{"role": "user", "content": "hola"}],
+      f"quedaron: {_validos}")
+_vacio = modelo.mensaje_respuesta_vacia("length")
+check("Una respuesta vacía se EXPLICA, no deja el chat mudo",
+      "presupuesto de tokens" in _vacio and "Qué hacer" in _vacio)
+check("Un motivo desconocido también se explica",
+      "raro_nuevo" in modelo.mensaje_respuesta_vacia("raro_nuevo"),
+      "si el motivo es nuevo hay que mostrarlo, no esconderlo")
+
 print("\n═══ 7. BORRADO Y GUARDA ANTI-PISADO ═══")
 msg = indice.eliminar_documento("Plan prueba v2.txt")
 check("Eliminar saca el documento del registro",
@@ -297,6 +315,20 @@ _home = (RAIZ / "src/app/Home.py").read_text(encoding="utf-8")
 check("exigir_login() se llama SOLO desde Home.py",
       all("exigir_login()" not in p.read_text(encoding="utf-8") for p in _paginas),
       "llamarlo dos veces duplica la key del botón 'Salir' y truena")
+_css = (RAIZ / "src/app/ui.py").read_text(encoding="utf-8")
+check("El estilo no fija fondos ni textos que rompan el modo oscuro",
+      not any(x in _css.lower() for x in ("background: #fff", "background:#fff",
+                                          "color: #000", "color:#000",
+                                          "color: white", "color: #fff")),
+      "un color fijo deja texto ilegible en uno de los dos temas")
+# Se miran solo las líneas ACTIVAS: el archivo menciona [theme] en un
+# comentario, justamente para advertir que no hay que usarlo.
+_toml = [l.strip() for l in
+         (RAIZ / ".streamlit/config.toml").read_text(encoding="utf-8").splitlines()
+         if l.strip() and not l.strip().startswith("#")]
+check("config.toml NO define [theme]",
+      "[theme]" not in _toml,
+      "definir [theme] fuerza el modo claro para todos los usuarios")
 check("El repositorio viaja sin datos",
       not any(p.name != ".gitkeep" for p in (RAIZ / "data").rglob("*") if p.is_file()),
       "data/ debe ir vacío: los documentos viven en Supabase")

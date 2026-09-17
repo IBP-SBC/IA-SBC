@@ -49,9 +49,11 @@ def check(nombre: str, condicion: bool, detalle: str = "") -> None:
 print("\n═══ ARRANQUE ═══")
 
 at = _correr(HOME, None)
-check("Sin sesión muestra el login y no truena",
-      not at.exception and any("sesión" in str(m.value).lower() for m in at.markdown),
-      str(at.exception))
+# Se comprueba por los CAMPOS, no por el texto: el texto del encabezado
+# puede cambiar con el diseño y la prueba seguiría siendo válida.
+check("Sin sesión muestra el formulario y no truena",
+      not at.exception and len(at.text_input) >= 2,
+      str(at.exception) or f"campos encontrados: {len(at.text_input)}")
 
 for rol in ("admin", "colaborador"):
     at = _correr(HOME, rol)
