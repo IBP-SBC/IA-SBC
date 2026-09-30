@@ -113,12 +113,12 @@ def encabezado_carga(titulo: str, estado: str, resumen: str,
                      ultima: str | None, ayuda: str) -> None:
     """
     ESTÁNDAR ÚNICO de los módulos de carga: siempre el mismo orden y las
-    mismas palabras. Título → estado + resumen → 🕓 última carga → ayuda.
+    mismas palabras. Título → estado + resumen → última carga → ayuda.
     """
     from nucleo.util import sello_legible
 
     st.markdown(f"#### {titulo}")
-    st.markdown(f"{estado} {resumen}")
-    st.caption(f"🕓 Última actualización: {sello_legible(ultima)}")
+    st.markdown(f"{estado} {resumen}".strip())
+    st.caption(f"Última actualización: {sello_legible(ultima)}")
     with st.expander("¿Cómo funciona?"):
         st.markdown(ayuda)

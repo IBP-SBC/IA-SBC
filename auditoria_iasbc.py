@@ -432,6 +432,36 @@ check("Ninguna pantalla pública pide clave",
 check("La pantalla de administración SÍ pide clave",
       "solo_admin()" in (RAIZ / "src/app/paginas/administrar.py").read_text(encoding="utf-8"))
 _css = (RAIZ / "src/app/ui.py").read_text(encoding="utf-8")
+# La barra se apilaba en vertical en el celular: Streamlit pone las
+# columnas una debajo de otra cuando la pantalla es angosta, que es
+# justo el caso de uso de esta app.
+_bloque_barra = _css[_css.index(".st-key-barra_inferior [data-testid=\"stHorizontalBlock\"]"):] \
+    if ".st-key-barra_inferior [data-testid=\"stHorizontalBlock\"]" in _css else ""
+check("La barra inferior se mantiene en UNA fila en pantallas angostas",
+      "flex-direction: row !important" in _bloque_barra
+      and "flex-wrap: nowrap !important" in _bloque_barra,
+      "sin esto, en el celular los botones se apilan y ocupan media pantalla")
+check("Las columnas de la barra se reparten el ancho por igual",
+      "flex: 1 1 0 !important" in _css and "min-width: 0 !important" in _css,
+      "sin min-width:0 un nombre largo empuja a los demás fuera de la barra")
+
+# Pedido explícito: nada de iconos en la interfaz.
+import re as _re  # noqa: E402
+_EMOJI = _re.compile("[\U0001F000-\U0001FAFF\u2600-\u27BF\u2B00-\u2BFF]")
+_con_emoji = [p.name for p in (RAIZ / "src/app").rglob("*.py")
+              if _EMOJI.search(p.read_text(encoding="utf-8"))]
+check("La interfaz no usa iconos ni emojis",
+      not _con_emoji, f"quedaron en: {_con_emoji}")
+
+_home_txt = (RAIZ / "src/app/Home.py").read_text(encoding="utf-8")
+check("Abajo hay exactamente TRES secciones",
+      "_secciones = [_conversar, _biblia, _personalizar]" in _home_txt,
+      "una cuarta opción compite con lo que la gente vino a hacer")
+check("La configuración no ocupa un lugar en la barra, pero es alcanzable",
+      "acceso_tope(_administrar" in _home_txt
+      and "_secciones + [_administrar]" in _home_txt,
+      "tiene que estar registrada como página aunque no esté en la barra")
+
 check("El estilo no fija fondos ni textos que rompan el modo oscuro",
       not any(x in _css.lower() for x in ("background: #fff", "background:#fff",
                                           "color: #000", "color:#000",

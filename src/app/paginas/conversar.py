@@ -54,8 +54,6 @@ if not _listo and es_admin():
 if "_chat" not in st.session_state:
     st.session_state["_chat"] = []
 
-AVATARES = {"user": "🙋", "assistant": "📖"}
-
 EJEMPLOS = [
     "¿Qué dice la Biblia sobre la ansiedad?",
     "¿Por dónde empiezo a leer la Biblia?",
@@ -70,7 +68,7 @@ if not st.session_state["_chat"]:
             st.rerun()
 
 for turno in st.session_state["_chat"]:
-    with st.chat_message(turno["role"], avatar=AVATARES.get(turno["role"])):
+    with st.chat_message(turno["role"]):
         st.markdown(turno["content"])
         bloque_fuentes(turno.get("fuentes") or [])
 
@@ -80,10 +78,10 @@ pregunta = st.chat_input("Escribí tu pregunta…") or st.session_state.pop(
 
 if pregunta:
     st.session_state["_chat"].append({"role": "user", "content": pregunta})
-    with st.chat_message("user", avatar=AVATARES["user"]):
+    with st.chat_message("user"):
         st.markdown(pregunta)
 
-    with st.chat_message("assistant", avatar=AVATARES["assistant"]):
+    with st.chat_message("assistant"):
         with st.spinner("Buscando…"):
             encontrados = indice.buscar(pregunta, k=TOP_K_DEFECTO,
                                         ambito=ambito)

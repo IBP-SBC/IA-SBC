@@ -54,7 +54,7 @@ with t_docs:
     estado = indice.resumen_estado()
     encabezado_carga(
         titulo="Cargar o actualizar documentos",
-        estado="🟢" if estado["documentos"] else "⚪",
+        estado="",
         resumen=(f"**{estado['publicos']} públicos** y "
                  f"**{estado['internos']} internos** en "
                  f"{estado['fragmentos']:,} fragmentos".replace(",", ".")
@@ -138,7 +138,7 @@ with t_texto:
     res = biblia.resumen()
     encabezado_carga(
         titulo="Texto bíblico",
-        estado="🟢" if res["versiculos"] else "⚪",
+        estado="",
         resumen=(f"**{res['versiculos']:,} versículos** de {res['libros']} "
                  f"libros en {res['versiones']} versión(es)".replace(",", ".")
                  if res["versiculos"] else "**Sin texto cargado todavía.**"),
@@ -188,7 +188,7 @@ with t_precios:
     precios = cotizador.leer_precios()
     encabezado_carga(
         titulo="Lista de precios",
-        estado="🟢" if not precios.empty else "⚪",
+        estado="",
         resumen=(f"**{len(precios)} combinaciones** cargadas"
                  if not precios.empty else
                  "**Sin lista de precios.** El cotizador funciona igual, pero "

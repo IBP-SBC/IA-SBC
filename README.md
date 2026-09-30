@@ -85,6 +85,13 @@ volver a romperse, se agrega un check a `auditoria_iasbc.py`.
 
 ## Versiones
 
+- **2.1.0** — la barra inferior se apilaba en vertical en el celular
+  (Streamlit pone las columnas una debajo de otra en pantallas angostas):
+  ahora se le fuerza la fila y el reparto de ancho. Fuera los iconos de
+  toda la interfaz: solo texto. La configuración salió de la barra y subió
+  a la esquina superior derecha, así abajo quedan las tres secciones que
+  la gente usa.
+
 - **2.0.0** — la app se abre a cualquiera. Navegación inferior de tres
   secciones (Conversar · Biblia · Personalizar), sin clave: la clave quedó
   solo para **Administrar**. Los documentos ahora tienen **ámbito**
