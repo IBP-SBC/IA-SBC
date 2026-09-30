@@ -85,6 +85,14 @@ volver a romperse, se agrega un check a `auditoria_iasbc.py`.
 
 ## Versiones
 
+- **2.0.0** — la app se abre a cualquiera. Navegación inferior de tres
+  secciones (Conversar · Biblia · Personalizar), sin clave: la clave quedó
+  solo para **Administrar**. Los documentos ahora tienen **ámbito**
+  (público o interno) y la búsqueda pública no puede alcanzar lo interno,
+  ni siquiera pidiéndolo por nombre. Nuevos módulos: `biblia.py` (lectura
+  por capítulo) y `cotizador.py` (precios desde una tabla que carga
+  comercial, nunca escritos en el código).
+
 - **1.2.0** — dos cosas. (1) Cuando el modelo terminaba sin escribir una
   sola letra, el chat quedaba **mudo** y la respuesta vacía se guardaba en
   el historial, envenenando las preguntas siguientes de esa sesión (por eso

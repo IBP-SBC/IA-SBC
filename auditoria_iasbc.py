@@ -157,6 +157,46 @@ check("Un archivo sin texto se RECHAZA con mensaje",
 check("Una extensión no soportada se rechaza explicando",
       not extraccion.extraer("archivo.zip", b"x").ok)
 
+print("\n═══ 4-bis. LA BARRERA ENTRE LO PÚBLICO Y LO INTERNO ═══")
+# Es el check más importante de la app: si esto falla, el presupuesto de
+# la SBC queda consultable por cualquiera que abra el enlace.
+indice.indexar_documento("Guia biblica.txt",
+                         ("La oracion y la lectura biblica son practicas "
+                          "centrales de la vida cristiana.\n\n" * 4).encode("utf-8"),
+                         "auditoria", ambito=indice.AMBITO_PUBLICO)
+indice.indexar_documento("Presupuesto secreto.txt",
+                         ("El presupuesto 2026 asciende a 41.386.063.026 pesos "
+                          "distribuidos entre los canales.\n\n" * 4).encode("utf-8"),
+                         "auditoria", ambito=indice.AMBITO_INTERNO)
+
+_pub = indice.buscar("presupuesto 2026 pesos", k=10,
+                     ambito=indice.AMBITO_PUBLICO)
+check("Una búsqueda pública NO alcanza un documento interno",
+      _pub.empty or "Presupuesto secreto.txt" not in set(_pub["documento"]),
+      f"se filtró: {sorted(set(_pub['documento'])) if not _pub.empty else ''}")
+
+_forzado = indice.buscar("presupuesto", k=10,
+                         documentos=["Presupuesto secreto.txt"],
+                         ambito=indice.AMBITO_PUBLICO)
+check("Pedir un documento interno desde el lado público devuelve vacío",
+      _forzado.empty,
+      "el filtro por documento no puede saltarse la barrera de ámbito")
+
+_interno = indice.buscar("presupuesto 2026 pesos", k=10, ambito=None)
+check("El administrador SÍ alcanza lo interno",
+      not _interno.empty and "Presupuesto secreto.txt" in set(_interno["documento"]))
+
+check("Un documento sin ámbito declarado cuenta como interno",
+      "Plan prueba.txt" in indice.documentos_del_ambito(indice.AMBITO_INTERNO),
+      "los documentos viejos no traen ámbito: equivocarse hacia el lado "
+      "cerrado deja un documento sin usar, hacia el abierto lo publica")
+
+indice.reconstruir_indice("auditoria")
+check("Reconstruir el índice CONSERVA el ámbito de cada documento",
+      indice.leer_registro()["Guia biblica.txt"]["ambito"] == indice.AMBITO_PUBLICO
+      and indice.leer_registro()["Presupuesto secreto.txt"]["ambito"] == indice.AMBITO_INTERNO,
+      "si se perdiera, un documento interno podría quedar público")
+
 print("\n═══ 5. BÚSQUEDA ═══")
 res = indice.buscar("¿cuál es el lote mínimo de la planta?", k=5)
 check("La búsqueda encuentra el fragmento correcto",
@@ -170,13 +210,81 @@ check("Una pregunta sin términos buscables devuelve vacío",
       indice.buscar("de la y el").empty,
       "con solo palabras vacías no se puede rankear: no hay que inventar un orden")
 
+print("\n═══ 5-bis. COTIZADOR: NI UN PRECIO INVENTADO ═══")
+import pandas as _pd  # noqa: E402
+from nucleo import cotizador  # noqa: E402
+
+cotizador.RUTA_PRECIOS = config.ESTADO_DIR / "precios.parquet"
+cotizador.RUTA_ADICIONALES = config.ESTADO_DIR / "precios_adicionales.parquet"
+
+_sin = cotizador.cotizar("Biblia", 1000, {})
+check("Sin lista de precios NO se inventa un valor",
+      _sin["ok"] is False and _sin["motivo"] == "sin_tabla"
+      and "$" not in _sin["mensaje"],
+      "un 'precio de referencia' sacado de la nada termina en un reclamo")
+
+_tabla = _pd.DataFrame([
+    {"familia": "Biblia", "referencia": "Agenda 13x21", "version": "RVR",
+     "tamano": "13x21 agenda", "cubierta": "Imitación piel",
+     "desde_cantidad": 800, "precio_unitario": 30000, "minimo": 800,
+     "dias_entrega": 90, "incluye": "Logo en cubierta"},
+    {"familia": "Biblia", "referencia": "Agenda 13x21", "version": "RVR",
+     "tamano": "13x21 agenda", "cubierta": "Imitación piel",
+     "desde_cantidad": 2400, "precio_unitario": 27000, "minimo": 800,
+     "dias_entrega": 90, "incluye": "Logo en cubierta"},
+])
+_tabla.to_parquet(cotizador.RUTA_PRECIOS, index=False)
+_pd.DataFrame([{"concepto": "Grabado del nombre", "tipo": "unitario",
+                "valor": 1500, "aplica_a": "todas"},
+               {"concepto": "Diseño de la cubierta", "tipo": "fijo",
+                "valor": 200000, "aplica_a": "todas"}]
+              ).to_parquet(cotizador.RUTA_ADICIONALES, index=False)
+
+_bajo = cotizador.cotizar("Biblia", 50, {"version": "RVR"})
+check("Por debajo del mínimo se avisa ANTES de cotizar",
+      _bajo["ok"] is False and _bajo["motivo"] == "bajo_minimo"
+      and _bajo["minimo"] == 800,
+      "enterarse al final del mínimo de planta es peor que saberlo al inicio")
+
+_mil = cotizador.cotizar("Biblia", 1000, {"version": "RVR"})
+check("Se aplica la escala correcta por cantidad",
+      _mil["ok"] and _mil["unitario"] == 30000 and _mil["total"] == 30_000_000,
+      f"dio: {_mil.get('unitario')} · {_mil.get('total')}")
+
+_tresmil = cotizador.cotizar("Biblia", 3000, {"version": "RVR"})
+check("Una cantidad mayor toma el precio de la escala superior",
+      _tresmil["ok"] and _tresmil["unitario"] == 27000,
+      f"dio: {_tresmil.get('unitario')}")
+
+_con_adic = cotizador.cotizar("Biblia", 1000, {"version": "RVR"},
+                              ["Grabado del nombre", "Diseño de la cubierta"])
+check("Los adicionales unitarios se multiplican y los fijos no",
+      _con_adic["total"] == 30_000_000 + 1500 * 1000 + 200_000,
+      f"total: {_con_adic.get('total')}")
+check("El unitario mostrado incluye los adicionales",
+      abs(_con_adic["unitario_con_adicionales"]
+          - _con_adic["total"] / 1000) < 0.01,
+      "el cliente compara por unidad: ese número tiene que cuadrar")
+check("La cotización dice el tiempo de entrega real",
+      _mil["dias_entrega"] == 90)
+
+_ok_carga, _msg_carga = cotizador.cargar_tabla(
+    b"familia,referencia,version,tamano,cubierta,desde_cantidad,"
+    b"precio_unitario,minimo,dias_entrega,incluye\n"
+    b"Biblia,X,RVR,13x21,Piel,800,0,800,90,nada\n", "precios.csv", "auditoria")
+check("Una tabla con precio en cero se RECHAZA entera",
+      _ok_carga is False and "cero" in _msg_carga.lower(),
+      "guardar un cero silencioso haría cotizar en 0 sin que nadie lo note")
+check("Tras rechazar, la tabla anterior sigue intacta",
+      len(cotizador.leer_precios()) == 2,
+      "una carga inválida no puede dejar a la app sin precios")
+
 print("\n═══ 6. CONTEXTO QUE VIAJA AL MODELO ═══")
 system = modelo.construir_system(res)
 check("El system incluye las instrucciones del negocio",
       "Sociedad Bíblica Colombiana" in system or "SBC" in system)
 check("El system incluye las reglas fijas", "NO NEGOCIABLES" in system)
 check("Los fragmentos van etiquetados para poder citarlos", "[F1]" in system)
-import pandas as _pd  # noqa: E402
 check("Sin fragmentos, se le dice al modelo que NO hay respaldo",
       "NO SE ENCONTRÓ" in modelo.construir_system(_pd.DataFrame()),
       "sin este aviso, el modelo responde de memoria y parece documentado")
@@ -310,11 +418,19 @@ check("nucleo/ no dibuja (app/ no calcula, nucleo/ no dibuja)",
 _paginas = list((RAIZ / "src/app/paginas").glob("*.py"))
 check("Las páginas registradas en Home.py existen",
       all((RAIZ / "src/app/paginas" / n).exists()
-          for n in ("conversacion.py", "documentos.py", "instrucciones.py")))
+          for n in ("conversar.py", "biblia.py", "personalizar.py",
+                    "administrar.py")))
 _home = (RAIZ / "src/app/Home.py").read_text(encoding="utf-8")
-check("exigir_login() se llama SOLO desde Home.py",
-      all("exigir_login()" not in p.read_text(encoding="utf-8") for p in _paginas),
-      "llamarlo dos veces duplica la key del botón 'Salir' y truena")
+check("La navegación va abajo, no en el panel lateral",
+      'position="hidden"' in _home and "barra_inferior" in _home,
+      "el menú lateral obliga a tocar la esquina más lejos del pulgar")
+_publicas = ["conversar.py", "biblia.py", "personalizar.py"]
+check("Ninguna pantalla pública pide clave",
+      all("solo_admin()" not in (RAIZ / "src/app/paginas" / n).read_text(encoding="utf-8")
+          for n in _publicas),
+      "la app se usa sin clave; la clave es solo para administrar")
+check("La pantalla de administración SÍ pide clave",
+      "solo_admin()" in (RAIZ / "src/app/paginas/administrar.py").read_text(encoding="utf-8"))
 _css = (RAIZ / "src/app/ui.py").read_text(encoding="utf-8")
 check("El estilo no fija fondos ni textos que rompan el modo oscuro",
       not any(x in _css.lower() for x in ("background: #fff", "background:#fff",
