@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import streamlit as st
 
-from app.millca.estilo import tope
+from app.millca.estilo import selector_tema, tope
 from nucleo import millca
 
 params = millca.leer_parametros()
@@ -42,6 +42,10 @@ with st.expander("Editar mi perfil"):
     if st.button("Guardar", key="_ml_perfil_guardar", type="primary"):
         st.session_state["_ml_nombre"] = nuevo.strip() or nombre
         st.rerun()
+
+selector_tema()
+st.caption("La elección queda en este dispositivo. En la app real se guarda "
+           "en el perfil de la usuaria.")
 
 st.markdown("#### Mis favoritos")
 st.markdown('<div class="ml-fila"><span>Juan 3:16</span><span>guardado</span></div>'

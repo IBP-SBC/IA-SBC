@@ -27,13 +27,15 @@ from nucleo.util import recortar
 # Alto reservado para la barra inferior: el contenido tiene que poder
 # terminar sin quedar tapado por ella.
 _ALTO_BARRA = 62
+# Alto que ocupa el badge de Streamlit Cloud abajo a la derecha.
+_ALTO_BADGE = 46
 
 _CSS = f"""
 <style>
 /* ---- Estructura general ---- */
 .block-container {{
   padding-top: 2.6rem;
-  padding-bottom: calc({_ALTO_BARRA}px + env(safe-area-inset-bottom, 0px) + 1.2rem);
+  padding-bottom: calc({_ALTO_BARRA}px + {_ALTO_BADGE}px + env(safe-area-inset-bottom, 0px) + 1.2rem);
   max-width: 760px;
 }}
 #MainMenu, footer, header [data-testid="stStatusWidget"] {{ visibility: hidden; }}
@@ -74,11 +76,19 @@ h1, h2, h3 {{ letter-spacing: -0.015em; }}
 /* ---- Barra inferior ---- */
 .st-key-barra_inferior {{
   position: fixed;
-  left: 0; right: 0; bottom: 0;
+
+/* El badge "Hosted with Streamlit" lo pinta la PLATAFORMA (en un servidor
+   propio no existe) y sus clases cambian con cada versión, así que no se
+   oculta de forma confiable. En vez de pelear por el mismo rincón, la
+   barra se levanta y le deja su sitio debajo: el tercer botón vuelve a
+   quedar libre para el pulgar. */
+  left: 0; right: 0;
+  bottom: calc({_ALTO_BADGE}px + env(safe-area-inset-bottom, 0px));
   z-index: 100;
   background: canvas;
   border-top: 1px solid rgba(128,128,128,0.22);
-  padding: 0.3rem 0.3rem calc(0.3rem + env(safe-area-inset-bottom, 0px));
+  padding: 0.3rem 0.3rem 0.3rem;
+  border-bottom: 1px solid rgba(128,128,128,0.22);
 }}
 
 /* EL ARREGLO QUE IMPORTA: Streamlit apila las columnas una debajo de

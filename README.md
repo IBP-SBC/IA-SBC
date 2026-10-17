@@ -85,6 +85,14 @@ volver a romperse, se agrega un check a `auditoria_iasbc.py`.
 
 ## Versiones
 
+- **2.2.1** — Demo Millca: la barra inferior **deja libre la esquina del
+  distintivo de Streamlit Cloud** (lo pinta la plataforma por fuera de la
+  app y tapaba la tercera pestaña en el celular; el `width:100%` que
+  Streamlit pone a sus contenedores anulaba el `right`). **Modo claro /
+  oscuro** elegible en Mi Altar, con paleta completa para toda la pantalla
+  y persistido en la URL (`?tema=oscuro`) para que sobreviva al refresco y
+  se pueda compartir. El tamaño de letra pasó de deslizador a tres botones.
+
 - **2.2.0** — **Demo Comunidad Millca** en /millca, /millca-inspiracion
   y /millca-altar: los tres botones de la propuesta con piel propia
   (pastel, serif), el evangelio de Juan completo en Reina-Valera 1909

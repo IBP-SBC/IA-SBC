@@ -38,13 +38,25 @@ pos = st.session_state.setdefault("_ml_capitulo", caps[0])
 if pos not in caps:
     pos = caps[0]
 
-c1, c2 = st.columns([2, 1])
-pos = c1.selectbox("Capítulo de Juan", caps, index=caps.index(pos),
+pos = st.selectbox("Capítulo de Juan", caps, index=caps.index(pos),
                    key="_ml_sel_cap", format_func=lambda c: f"Juan {c}")
-tam = c2.select_slider("Letra", ["A", "A+", "A++"], value="A+", key="_ml_letra")
 st.session_state["_ml_capitulo"] = pos
 
-escala = {"A": "1.08rem", "A+": "1.22rem", "A++": "1.42rem"}[tam]
+# Tamaño de letra como tres botones, igual que Claro/Oscuro: coherente
+# con el resto de la demo y fácil de tocar con el pulgar. Antes era un
+# deslizador de Streamlit que no aceptaba la paleta (la pista quedaba
+# roja) y que en el celular es difícil de acertar.
+TAMANOS = {"A": "1.08rem", "A+": "1.22rem", "A++": "1.42rem"}
+tam = st.session_state.setdefault("_ml_letra", "A+")
+with st.container(key="ml_letra"):
+    cols = st.columns(len(TAMANOS))
+    for col, nombre in zip(cols, TAMANOS):
+        if col.button(nombre, key=f"_ml_letra_{nombre}",
+                      type="primary" if nombre == tam else "secondary",
+                      use_container_width=True) and nombre != tam:
+            st.session_state["_ml_letra"] = nombre
+            st.rerun()
+escala = TAMANOS[tam]
 versiculos = millca.capitulo(pos)
 cuerpo = "".join(f'<p><span class="v">{int(f["versiculo"])}</span>{f["texto"]}</p>'
                  for _, f in versiculos.iterrows())

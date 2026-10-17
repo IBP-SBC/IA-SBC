@@ -487,18 +487,39 @@ check("La barra inferior se mantiene en UNA fila en pantallas angostas",
       "flex-direction: row !important" in _bloque_barra
       and "flex-wrap: nowrap !important" in _bloque_barra,
       "sin esto, en el celular los botones se apilan y ocupan media pantalla")
-_css_ml = (RAIZ / "src/app/millca/estilo.py").read_text(encoding="utf-8")
+# La piel de Millca ahora genera el CSS por paleta: se evalúa el CSS
+# RESULTANTE de cada tema, no el texto del archivo.
+import app.millca.estilo as _ml_estilo  # noqa: E402
+_css_ml_por_tema = {k: _ml_estilo._css(pal) for k, pal in _ml_estilo.PALETAS.items()}
+_css_ml = "\n".join(_css_ml_por_tema.values())
 check("Las barras fijas tienen un fondo REAL (no una variable inexistente)",
       "var(--background-color)" not in _css and "var(--background-color)" not in _css_ml
-      and "background: canvas;" in _css and "background: canvas;" in _css_ml,
+      and "background: canvas;" in _css
+      and all(f'background: {pal["fondo"]};' in _css_ml_por_tema[k]
+              for k, pal in _ml_estilo.PALETAS.items()),
       "con var(--background-color) la barra quedaba transparente y el texto "
       "se leía por debajo; pasó en producción en la v2.1")
-_bloque_acceso = _css[_css.index(".st-key-acceso_tope {"):_css.index(".st-key-acceso_tope .stButton")]
-import re as _re2  # noqa: E402
-_z = _re2.search(r"z-index:\s*(\d+)", _bloque_acceso)
-check("El acceso de configuración queda POR ENCIMA de la cabecera de Streamlit",
-      _z is not None and int(_z.group(1)) > 999990,
-      "la cabecera tiene z-index 999990 y tapa el botón aunque exista; pasó en la v2.1")
+check("La barra de Millca deja libre la esquina del distintivo de Streamlit Cloud",
+      all(f"right: {_ml_estilo._RESERVA_BADGE}px;" in c
+          and "width: auto !important;" in c[c.index(".st-key-ml_barra {"):]
+          for c in _css_ml_por_tema.values())
+      and _ml_estilo._RESERVA_BADGE >= 100,
+      "el distintivo lo pinta la plataforma por fuera de la app y tapaba la "
+      "tercera pestaña en el celular")
+check("Cada paleta pinta el fondo de TODA la app, no solo las tarjetas",
+      all('.stApp, [data-testid="stAppViewContainer"]' in c for c in _css_ml_por_tema.values()),
+      "un modo oscuro de tarjetas sobre fondo blanco no es un modo oscuro")
+_src_estilo = (RAIZ / "src/app/millca/estilo.py").read_text(encoding="utf-8")
+check("El tema elegido se guarda en la URL, no solo en la sesión",
+      "st.query_params" in _src_estilo and 'PARAM_TEMA = "tema"' in _src_estilo,
+      "la sesión de Streamlit se renueva al refrescar: el modo oscuro duraba "
+      "hasta el primer refresco")
+check("La demo ya no usa el deslizador de Streamlit (quedaba rojo)",
+      "select_slider" not in (RAIZ / "src/app/millca/palabra.py").read_text(encoding="utf-8")
+      and "stSlider" not in _src_estilo)
+check("El modo oscuro de Millca no es el claro con otro nombre",
+      _ml_estilo.PALETAS["claro"]["fondo"] != _ml_estilo.PALETAS["oscuro"]["fondo"]
+      and _ml_estilo.PALETAS["claro"]["texto"] != _ml_estilo.PALETAS["oscuro"]["texto"])
 check("Se oculta el botón Deploy de Streamlit",
       "stAppDeployButton" in _css and "stAppDeployButton" in _css_ml,
       "un botón 'Deploy' arriba a la derecha delata la herramienta")
