@@ -37,14 +37,13 @@ st.set_page_config(
 from app.estado import es_admin  # noqa: E402
 from app.ui import acceso_tope, aplicar_estilo, barra_inferior  # noqa: E402
 
-aplicar_estilo()
-
 # El disco de Streamlit Cloud arranca vacío tras un reinicio. Se hace una
 # vez por sesión y es silenciosa si no hay nube configurada.
 from nucleo import nube  # noqa: E402
 
 nube.hidratar()
 
+# ── Secciones de la SBC ──────────────────────────────────────────────
 _V = "paginas"
 _conversar = st.Page(f"{_V}/conversar.py", title="Conversar",
                      url_path="conversar", default=True)
@@ -53,15 +52,34 @@ _personalizar = st.Page(f"{_V}/personalizar.py", title="Personalizar",
                         url_path="personalizar")
 _administrar = st.Page(f"{_V}/administrar.py", title="Configuración",
                        url_path="administrar")
-
 _secciones = [_conversar, _biblia, _personalizar]
 
-_navegacion = st.navigation(_secciones + [_administrar], position="hidden")
-_en_admin = _navegacion.url_path == _administrar.url_path
+# ── Demo Millca ──────────────────────────────────────────────────────
+# Vive en direcciones aparte (…/millca, …/millca-inspiracion,
+# …/millca-altar). No aparece en los botones de la SBC: solo la ve quien
+# tenga el enlace. Tiene su propia piel y su propia barra, y nunca toca
+# los documentos ni la configuración de la SBC.
+_M = "millca"
+_ml_palabra = st.Page(f"{_M}/palabra.py", title="La Palabra", url_path="millca")
+_ml_inspiracion = st.Page(f"{_M}/inspiracion.py", title="Inspiración",
+                          url_path="millca-inspiracion")
+_ml_altar = st.Page(f"{_M}/altar.py", title="Mi Altar", url_path="millca-altar")
+_millca = [_ml_palabra, _ml_inspiracion, _ml_altar]
 
-acceso_tope(_administrar, es_admin(), _en_admin)
-# La barra va SIEMPRE, también dentro de la configuración: es la única
-# forma de volver a la app sin buscar un botón de "atrás". Estando en
-# configuración no hay ninguna sección marcada como activa.
-barra_inferior(_secciones, _navegacion.url_path)
+_navegacion = st.navigation(_secciones + [_administrar] + _millca,
+                            position="hidden")
+_actual = _navegacion.url_path
+_en_millca = _actual in {p.url_path for p in _millca}
+
+if _en_millca:
+    from app.millca.estilo import aplicar as _ml_aplicar, barra as _ml_barra
+    _ml_aplicar()
+    _ml_barra(_millca, _actual)
+else:
+    aplicar_estilo()
+    acceso_tope(_administrar, es_admin(), _actual == _administrar.url_path)
+    # La barra va SIEMPRE, también dentro de la configuración: es la única
+    # forma de volver a la app sin buscar un botón de "atrás".
+    barra_inferior(_secciones, _actual)
+
 _navegacion.run()

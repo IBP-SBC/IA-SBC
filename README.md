@@ -85,6 +85,17 @@ volver a romperse, se agrega un check a `auditoria_iasbc.py`.
 
 ## Versiones
 
+- **2.2.0** — **Demo Comunidad Millca** en /millca, /millca-inspiracion
+  y /millca-altar: los tres botones de la propuesta con piel propia
+  (pastel, serif), el evangelio de Juan completo en Reina-Valera 1909
+  (dominio público, 879 versículos verificados), los reels reales de
+  Millca y dos videos de YouTube incrustados, y el perfil de la usuaria.
+  Se configura desde Configuración → Millca. Dos bugs de la v2.1 que la
+  demo sacó a la luz y quedaron corregidos en toda la app: la barra
+  inferior era transparente (Streamlit no expone `--background-color`)
+  y el botón "Entrar" existía pero la cabecera lo tapaba. `st.iframe`
+  reemplaza al `components.iframe` que se retira en 2026.
+
 - **2.1.0** — la barra inferior se apilaba en vertical en el celular
   (Streamlit pone las columnas una debajo de otra en pantallas angostas):
   ahora se le fuerza la fila y el reparto de ancho. Fuera los iconos de

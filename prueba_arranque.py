@@ -69,6 +69,27 @@ at = _correr(PAGINAS / "administrar.py", True)
 check("Administrar abre con sesión iniciada", not at.exception,
       str(at.exception))
 
+# La demo Millca: las tres pantallas, como visitante.
+MILLCA = RAIZ / "src/app/millca"
+for archivo in ("palabra.py", "inspiracion.py", "altar.py"):
+    at = _correr(MILLCA / archivo)
+    check(f"millca/{archivo} abre sin excepción", not at.exception,
+          str(at.exception))
+
+at = _correr(MILLCA / "palabra.py")
+check("La Palabra muestra texto bíblico real",
+      any("Verbo" in str(m.value) for m in at.markdown),
+      "no apareció Juan 1 en pantalla")
+
+# Un st.exception dentro de la página NO es at.exception: la página
+# "abre" pero muestra un bloque rojo. Así se coló un TypeError de
+# st.iframe que la prueba anterior daba por bueno.
+at = _correr(MILLCA / "inspiracion.py")
+check("Inspiración renderiza sin bloques de error en pantalla",
+      not at.exception and len(at.error) == 0 and len(at.get("exception")) == 0,
+      f"errores: {[str(e.value)[:80] for e in at.error]} "
+      f"excepciones: {[str(e.value)[:80] for e in at.get('exception')]}")
+
 print("\n" + "═" * 60)
 if _FALLOS:
     print(f"FALLARON {len(_FALLOS)} pruebas\n")

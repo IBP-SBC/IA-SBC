@@ -37,6 +37,7 @@ _CSS = f"""
   max-width: 760px;
 }}
 #MainMenu, footer, header [data-testid="stStatusWidget"] {{ visibility: hidden; }}
+[data-testid="stAppDeployButton"], [data-testid="stToolbar"] {{ display: none !important; }}
 [data-testid="stSidebar"] {{ display: none; }}
 h1, h2, h3 {{ letter-spacing: -0.015em; }}
 
@@ -46,21 +47,26 @@ h1, h2, h3 {{ letter-spacing: -0.015em; }}
 .sbc-tope .s {{ font-size: 0.87rem; opacity: 0.65; margin-top: 0.1rem; }}
 
 /* ---- Acceso de configuracion, arriba a la derecha ---- */
+/* Va a la misma altura que la cabecera de Streamlit, que mide 2.875rem
+   y queda por ENCIMA en el apilado: con z-index más alto que ella
+   (999990) el enlace se ve; con menos, la cabecera transparente lo tapa
+   aunque exista. Pasó en la v2.1: el botón estaba y nadie lo veía. */
 .st-key-acceso_tope {{
   position: fixed;
-  top: calc(0.5rem + env(safe-area-inset-top, 0px));
-  right: 0.8rem;
-  z-index: 101;
+  top: calc(0.55rem + env(safe-area-inset-top, 0px));
+  right: 0.9rem;
+  z-index: 999991;
   width: auto;
 }}
 .st-key-acceso_tope .stButton > button {{
-  border: none;
-  background: transparent;
+  border: 1px solid rgba(128,128,128,0.35);
+  border-radius: 999px;
+  background: canvas;
   color: inherit;
-  opacity: 0.55;
+  opacity: 0.8;
   font-size: 0.78rem;
   font-weight: 500;
-  padding: 0.2rem 0.4rem;
+  padding: 0.15rem 0.7rem;
   min-height: 0;
 }}
 .st-key-acceso_tope .stButton > button:hover {{ opacity: 1; }}
@@ -70,7 +76,7 @@ h1, h2, h3 {{ letter-spacing: -0.015em; }}
   position: fixed;
   left: 0; right: 0; bottom: 0;
   z-index: 100;
-  background: var(--background-color);
+  background: canvas;
   border-top: 1px solid rgba(128,128,128,0.22);
   padding: 0.3rem 0.3rem calc(0.3rem + env(safe-area-inset-bottom, 0px));
 }}
@@ -113,6 +119,7 @@ h1, h2, h3 {{ letter-spacing: -0.015em; }}
   color: {COLOR_PRIMARIO};
   opacity: 1;
   box-shadow: inset 0 2px 0 0 {COLOR_PRIMARIO};
+  border-radius: 0 !important;
 }}
 
 /* ---- Chat ---- */

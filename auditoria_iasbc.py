@@ -404,6 +404,52 @@ check("Un borrado explícito NO queda bloqueado por la guarda",
 nube.nube_activa = lambda: False
 nube.leer_json_remoto = lambda *a, **k: None
 
+print("\n═══ 7-bis. DEMO MILLCA ═══")
+from nucleo import millca  # noqa: E402
+
+_rc = millca.resumen_corpus()
+check("El texto de la demo viaja en el repo y es Juan completo",
+      _rc["versiculos"] == 879 and _rc["capitulos"] == 21,
+      f"se esperaban 879 versículos en 21 capítulos; hay {_rc}")
+_j316 = millca.capitulo(3)
+_j316 = _j316[_j316["versiculo"] == 16]["texto"].iloc[0] if not _j316.empty else ""
+check("Juan 3:16 es el de la RV1909 (ortografía antigua, no RVR60)",
+      "á su Hijo unigénito" in _j316,
+      "si dice 'a su Hijo' sin tilde es otra versión y hay que revisar derechos")
+check("El versículo del día no es aleatorio (misma pantalla para todos)",
+      millca.versiculo_del_dia() == millca.versiculo_del_dia())
+_yt = millca.clasificar_video("https://youtu.be/dQw4w9WgXcQ?si=abc")
+check("Reconoce enlaces cortos de YouTube",
+      _yt["plataforma"] == "youtube" and _yt["embed"].endswith("/embed/dQw4w9WgXcQ"))
+_sh = millca.clasificar_video("https://www.youtube.com/shorts/AbC123xyz_-")
+check("Reconoce YouTube Shorts", _sh["embed"].endswith("/embed/AbC123xyz_-"))
+_ig = millca.clasificar_video("https://www.instagram.com/reel/C9xYz12AbCd/?igsh=1")
+check("Reconoce reels de Instagram y AVISA su límite",
+      _ig["plataforma"] == "instagram" and "/reel/C9xYz12AbCd/embed/" in _ig["embed"]
+      and "públicas" in _ig["aviso"])
+check("Un enlace de otra plataforma no se incrusta: queda como enlace",
+      millca.clasificar_video("https://vimeo.com/123")["embed"] == "")
+_urls_fabrica = [v["url"] for v in millca.PARAMS_DEFECTO["videos"]]
+check("Los videos de fábrica son los entregados por Alberto (3 reels + 2 YouTube)",
+      len(_urls_fabrica) == 5
+      and sum("instagram.com/reel/" in u for u in _urls_fabrica) == 3
+      and sum("youtu.be/" in u for u in _urls_fabrica) == 2,
+      f"hay {_urls_fabrica}")
+check("Todos los videos de fábrica se pueden incrustar",
+      all(millca.clasificar_video(u)["embed"] for u in _urls_fabrica),
+      "un enlace de fábrica que no incruste rompería la demo al abrirla")
+check("El perfil de Instagram es la cuenta real de Millca",
+      millca.PARAMS_DEFECTO["instagram_perfil"].rstrip("/").endswith("/millcadesign"))
+_home_src = (RAIZ / "src/app/Home.py").read_text(encoding="utf-8")
+check("La demo NO está en los botones de la SBC",
+      "_secciones = [_conversar, _biblia, _personalizar]" in _home_src
+      and "_millca = [" in _home_src)
+_ml_src = "".join(p.read_text(encoding="utf-8") for p in (RAIZ / "src/app/millca").glob("*.py"))
+check("La demo no toca el índice ni la configuración de la SBC",
+      "from nucleo import indice" not in _ml_src and "cotizador" not in _ml_src
+      and "nucleo.biblia" not in _ml_src,
+      "la demo tiene que vivir aislada de los documentos internos")
+
 print("\n═══ 8. ARQUITECTURA ═══")
 _fuentes_nucleo = list((RAIZ / "src/nucleo").rglob("*.py"))
 _dibujan = []
@@ -441,6 +487,21 @@ check("La barra inferior se mantiene en UNA fila en pantallas angostas",
       "flex-direction: row !important" in _bloque_barra
       and "flex-wrap: nowrap !important" in _bloque_barra,
       "sin esto, en el celular los botones se apilan y ocupan media pantalla")
+_css_ml = (RAIZ / "src/app/millca/estilo.py").read_text(encoding="utf-8")
+check("Las barras fijas tienen un fondo REAL (no una variable inexistente)",
+      "var(--background-color)" not in _css and "var(--background-color)" not in _css_ml
+      and "background: canvas;" in _css and "background: canvas;" in _css_ml,
+      "con var(--background-color) la barra quedaba transparente y el texto "
+      "se leía por debajo; pasó en producción en la v2.1")
+_bloque_acceso = _css[_css.index(".st-key-acceso_tope {"):_css.index(".st-key-acceso_tope .stButton")]
+import re as _re2  # noqa: E402
+_z = _re2.search(r"z-index:\s*(\d+)", _bloque_acceso)
+check("El acceso de configuración queda POR ENCIMA de la cabecera de Streamlit",
+      _z is not None and int(_z.group(1)) > 999990,
+      "la cabecera tiene z-index 999990 y tapa el botón aunque exista; pasó en la v2.1")
+check("Se oculta el botón Deploy de Streamlit",
+      "stAppDeployButton" in _css and "stAppDeployButton" in _css_ml,
+      "un botón 'Deploy' arriba a la derecha delata la herramienta")
 check("Las columnas de la barra se reparten el ancho por igual",
       "flex: 1 1 0 !important" in _css and "min-width: 0 !important" in _css,
       "sin min-width:0 un nombre largo empuja a los demás fuera de la barra")
@@ -475,9 +536,14 @@ _toml = [l.strip() for l in
 check("config.toml NO define [theme]",
       "[theme]" not in _toml,
       "definir [theme] fuerza el modo claro para todos los usuarios")
-check("El repositorio viaja sin datos",
-      not any(p.name != ".gitkeep" for p in (RAIZ / "data").rglob("*") if p.is_file()),
-      "data/ debe ir vacío: los documentos viven en Supabase")
+_datos_prohibidos = [p for p in (RAIZ / "data").rglob("*") if p.is_file()
+                     and p.name != ".gitkeep" and "semilla" not in p.parts]
+check("El repositorio viaja sin datos de la SBC",
+      not _datos_prohibidos,
+      f"data/documentos y data/estado deben ir vacíos: {_datos_prohibidos}")
+check("La única semilla que viaja es texto de dominio público",
+      sorted(p.name for p in (RAIZ / "data/semilla").glob("*")) == ["juan_rv1909.csv"],
+      "data/semilla es solo para la RV1909; nada de la SBC va ahí")
 
 print("\n" + "═" * 60)
 if _FALLOS:

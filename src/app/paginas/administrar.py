@@ -43,8 +43,9 @@ if st.button("Cerrar sesión", key="_adm_salir"):
     salir()
     st.rerun()
 
-t_docs, t_texto, t_precios, t_instr, t_mant = st.tabs(
-    ["Documentos", "Texto bíblico", "Precios", "Instrucciones", "Modelo"])
+t_docs, t_texto, t_precios, t_instr, t_mant, t_millca = st.tabs(
+    ["Documentos", "Texto bíblico", "Precios", "Instrucciones", "Modelo",
+     "Millca"])
 
 
 # ════════════════════════════════════════════════════════════════════
@@ -303,3 +304,74 @@ with t_mant:
         buenos = sum(1 for r in resultados if r.get("ok"))
         st.success(f"Reindexados {buenos} de {len(resultados)}.")
         st.cache_resource.clear()
+
+
+# ════════════════════════════════════════════════════════════════════
+# DEMO MILLCA
+# ════════════════════════════════════════════════════════════════════
+with t_millca:
+    from nucleo import millca
+
+    pm = millca.leer_parametros()
+    rc = millca.resumen_corpus()
+    st.markdown(
+        "La demo vive en **/millca** (y /millca-inspiracion, /millca-altar). "
+        "No aparece en los botones de la SBC: solo la ve quien tenga el "
+        "enlace. Lo que cambies acá se ve de inmediato, sin redesplegar.")
+    st.caption(f"Texto cargado: Juan RV1909 · {rc['versiculos']} versículos en "
+               f"{rc['capitulos']} capítulos.")
+
+    st.markdown("##### Identidad")
+    nombre_app = st.text_input("Nombre de la app", value=pm["nombre_app"],
+                               key="_ml_cfg_nombre")
+    lema = st.text_input("Lema", value=pm["lema"], key="_ml_cfg_lema")
+    perfil_ig = st.text_input("Perfil de Instagram", value=pm.get("instagram_perfil", ""),
+                              key="_ml_cfg_ig", help="El enlace a la cuenta, no a un reel.")
+
+    st.markdown("##### Videos de Inspiración Diaria")
+    st.caption("Pegá enlaces de YouTube (youtube.com/watch, youtu.be, shorts) o "
+               "de publicaciones públicas de Instagram (instagram.com/p/… o "
+               "/reel/…). Uno por fila, con un título corto.")
+    import pandas as _pd
+    base = pm.get("videos") or [{"titulo": "", "url": ""}]
+    tabla = st.data_editor(
+        _pd.DataFrame(base, columns=["titulo", "url"]),
+        num_rows="dynamic", use_container_width=True, hide_index=True,
+        key="_ml_cfg_videos",
+        column_config={"titulo": "Título", "url": "Enlace"})
+
+    st.markdown("##### Perfil de la demo")
+    c1, c2 = st.columns(2)
+    nombre_u = c1.text_input("Nombre de la usuaria", value=pm["nombre_usuaria"],
+                             key="_ml_cfg_usuaria")
+    ciudad = c2.text_input("Ciudad", value=pm["ciudad"], key="_ml_cfg_ciudad")
+    c3, c4, c5 = st.columns(3)
+    racha = c3.number_input("Días seguidos", 0, 365, int(pm["racha_dias"]),
+                            key="_ml_cfg_racha")
+    leidos = c4.number_input("Capítulos leídos", 0, 1189, int(pm["capitulos_leidos"]),
+                             key="_ml_cfg_leidos")
+    notas = c5.number_input("Notas", 0, 999, int(pm["notas_guardadas"]),
+                            key="_ml_cfg_notas")
+    st.caption("Estas cifras son ilustrativas y la demo lo dice en pantalla.")
+
+    if st.button("Guardar demo Millca", type="primary", key="_ml_cfg_guardar"):
+        videos = []
+        problemas = []
+        for _, fila in tabla.fillna("").iterrows():
+            url = str(fila["url"]).strip()
+            if not url:
+                continue
+            info = millca.clasificar_video(url)
+            if not info["embed"] and info["plataforma"] != "otro":
+                problemas.append(f"{url}: {info['aviso']}")
+            videos.append({"titulo": str(fila["titulo"]).strip(), "url": url})
+        msg = millca.guardar_parametros({
+            "nombre_app": nombre_app.strip() or pm["nombre_app"],
+            "lema": lema.strip(), "videos": videos,
+            "instagram_perfil": perfil_ig.strip().split("?")[0],
+            "nombre_usuaria": nombre_u.strip() or pm["nombre_usuaria"],
+            "ciudad": ciudad.strip(), "racha_dias": int(racha),
+            "capitulos_leidos": int(leidos), "notas_guardadas": int(notas)})
+        st.success(f"{msg} {len(videos)} video(s).")
+        for pr in problemas:
+            st.warning(pr)
