@@ -24,7 +24,7 @@ from pathlib import Path
 # ── Identidad ────────────────────────────────────────────────────────
 APP_NOMBRE = "IA · SBC"
 APP_SUBTITULO = "Sociedad Bíblica Colombiana"
-APP_VERSION = "2.2.1"
+APP_VERSION = "2.3.0"
 
 # ── Rutas locales ────────────────────────────────────────────────────
 # parents[2] = raíz del repo (src/nucleo/config.py → src/ → raíz)
@@ -95,17 +95,23 @@ TAM_MAX_MB = 50
 # colaborador: conversa y ve las fuentes. No carga ni borra.
 ROLES = ("admin", "colaborador")
 
-# Usuario de emergencia SOLO para el primer arranque local, cuando aún no
-# hay secrets configurados. En la nube SIEMPRE mandan los secrets, donde
-# el administrador es "PEÑA JOSE ALBERTO" con la clave de siempre.
-# Esta clave de fábrica no abre nada en producción: en cuanto existe la
-# sección [usuarios] en los secrets, esta tabla deja de usarse.
+# Usuario de emergencia SOLO para el primer arranque local, en un equipo
+# SIN ningún Secret. En la nube mandan los Secrets (el administrador es
+# director.promocion@sbcol.org y su clave vive SOLO allá). Desde la v2.3
+# esta tabla se ignora en cuanto existe CUALQUIER Secret, aunque la
+# sección [usuarios] esté mal escrita: antes, un error de sintaxis en los
+# Secrets dejaba abierta esta puerta de fábrica.
 USUARIOS_DEFECTO = {
     "admin": {"clave": "cambiar-en-secrets", "rol": "admin"},
 }
 
 # ── Paleta SBC (la misma de sbc_ventas, para que se vean hermanas) ───
 COLOR_PRIMARIO = "#1f4e79"
+# El mismo azul, aclarado, para el MODO OSCURO. El #1f4e79 sobre el fondo
+# oscuro de Streamlit (#0e1117) tiene contraste 2,18:1: la pestaña activa
+# de la barra casi no se leía. Este tiene 7,47:1 (el mínimo legible es
+# 4,5:1). Lo usan .streamlit/config.toml ([theme.dark]) y la barra.
+COLOR_PRIMARIO_OSCURO = "#6ea8dc"
 COLOR_ACENTO = "#3b82f6"
 COLOR_OK = "#10b981"
 COLOR_ALERTA = "#dc2626"

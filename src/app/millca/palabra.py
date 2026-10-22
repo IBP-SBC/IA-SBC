@@ -14,13 +14,14 @@ from __future__ import annotations
 import streamlit as st
 
 from app.millca.estilo import tope
+from app.ui import llevar_a
 from nucleo import millca
 
 params = millca.leer_parametros()
 tope(params["nombre_app"], "La Palabra", "Tu lectura de hoy")
 
 if millca.resumen_corpus()["versiculos"] == 0:
-    st.error("No encuentro el texto bíblico de la demo (data/semilla/juan_rv1909.csv).")
+    st.error("No encuentro el texto bíblico de la demo (data/semilla/nt_rv1909.csv).")
     st.stop()
 
 # ── Versículo del día ────────────────────────────────────────────────
@@ -33,14 +34,33 @@ if vdd:
         unsafe_allow_html=True)
 
 # ── Capítulo ─────────────────────────────────────────────────────────
+# EL SELECTOR ES LA ÚNICA FUENTE DE VERDAD del capítulo (su clave en la
+# sesión). Hasta la v2.2.1 los botones Anterior/Siguiente escribían en
+# otra variable y el selector, que guarda su propio valor, la pisaba en
+# el redibujo: tocar "Juan 2 →" dejaba la página en Juan 1. Ahora los
+# botones cambian el valor del selector con una función on_click, que
+# Streamlit ejecuta ANTES de redibujar (cambiarlo después de dibujado
+# está prohibido y lanza un error).
+CLAVE_CAP = "_ml_sel_cap"
 caps = millca.capitulos()
-pos = st.session_state.setdefault("_ml_capitulo", caps[0])
-if pos not in caps:
-    pos = caps[0]
+if st.session_state.get(CLAVE_CAP) not in caps:
+    st.session_state[CLAVE_CAP] = caps[0]
 
-pos = st.selectbox("Capítulo de Juan", caps, index=caps.index(pos),
-                   key="_ml_sel_cap", format_func=lambda c: f"Juan {c}")
-st.session_state["_ml_capitulo"] = pos
+
+def _ir_a(capitulo: int) -> None:
+    st.session_state[CLAVE_CAP] = capitulo
+
+
+# ¿Cambió el capítulo desde el último dibujo? Si cambió, al final de la
+# página se lleva la pantalla al comienzo de la lectura: los botones están
+# al final del texto y, sin esto, Juan 2 se abría mostrando su final.
+_visto = st.session_state.get("_ml_cap_visto")
+cambio_capitulo = _visto is not None and _visto != st.session_state[CLAVE_CAP]
+st.session_state["_ml_cap_visto"] = st.session_state[CLAVE_CAP]
+
+
+pos = st.selectbox("Capítulo de Juan", caps, key=CLAVE_CAP,
+                   format_func=lambda c: f"Juan {c}")
 
 # Tamaño de letra como tres botones, igual que Claro/Oscuro: coherente
 # con el resto de la demo y fácil de tocar con el pulgar. Antes era un
@@ -66,15 +86,14 @@ st.caption("Reina-Valera 1909 · dominio público. En la app real irá la "
            "versión que Millca elija, con su licencia.")
 
 i = caps.index(pos)
-a, b = st.columns(2)
-if i > 0 and a.button("← Juan " + str(caps[i - 1]), key="_ml_ant",
-                      use_container_width=True):
-    st.session_state["_ml_capitulo"] = caps[i - 1]
-    st.rerun()
-if i < len(caps) - 1 and b.button("Juan " + str(caps[i + 1]) + " →",
-                                  key="_ml_sig", use_container_width=True):
-    st.session_state["_ml_capitulo"] = caps[i + 1]
-    st.rerun()
+with st.container(key="ml_nav"):          # lado a lado también en el celular
+    a, b = st.columns(2)
+    if i > 0:
+        a.button(f"← Juan {caps[i - 1]}", key="_ml_ant", on_click=_ir_a,
+                 args=(caps[i - 1],), use_container_width=True)
+    if i < len(caps) - 1:
+        b.button(f"Juan {caps[i + 1]} →", key="_ml_sig", on_click=_ir_a,
+                 args=(caps[i + 1],), use_container_width=True)
 
 # ── Bloc de notas (almacenamiento local, como el Nivel 1) ────────────
 st.markdown("")
@@ -90,3 +109,8 @@ with st.expander("Mi diario de lectura"):
     if guardadas:
         st.caption(f"{len(guardadas)} nota(s) en este dispositivo. En el Nivel 2 "
                    "se respaldan en la nube y viajan con la usuaria.")
+
+# Al FINAL de la página, para que la lectura ya exista cuando corra.
+if cambio_capitulo:
+    st.session_state["_ml_saltos"] = st.session_state.get("_ml_saltos", 0) + 1
+    llevar_a(".ml-lectura", f"Juan {pos} #{st.session_state['_ml_saltos']}")

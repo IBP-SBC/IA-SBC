@@ -18,15 +18,22 @@ FORMATO DEL CORPUS (data/estado/biblia.parquet):
   texto      el versículo
 
 DE DÓNDE SALE: de los PDF originales de la SBC, que son de la casa. La
-extracción NO se hace acá: se hace una vez con herramientas/extraer_biblia.py
-y se revisa contra el impreso antes de publicarla. Un error de extracción
-en un versículo no es un bug de software, es un texto bíblico mal citado.
+extracción NO se hace acá: se hace una vez y se revisa contra el impreso
+antes de publicarla. Un error de extracción en un versículo no es un bug
+de software, es un texto bíblico mal citado.
+
+MIENTRAS NO HAYA TEXTO OFICIAL se muestra el Nuevo Testamento Reina-Valera
+1909 de ejemplo (dominio público, ver nucleo/semilla.py). Es un respaldo,
+no una versión más: en cuanto el administrador carga el corpus de la SBC,
+el ejemplo deja de mostrarse. La pantalla dice siempre cuál está viendo.
 """
 from __future__ import annotations
 
 import pandas as pd
 
-from nucleo import nube
+from functools import lru_cache
+
+from nucleo import nube, semilla
 from nucleo.config import ESTADO_DIR
 
 ARCHIVO_BIBLIA = "biblia.parquet"
@@ -35,17 +42,40 @@ RUTA_BIBLIA = ESTADO_DIR / ARCHIVO_BIBLIA
 COLUMNAS = ["version", "libro", "orden", "capitulo", "versiculo", "texto"]
 
 
-def leer_corpus() -> pd.DataFrame:
-    """Corpus completo. Vacío si todavía no se ha cargado ningún texto."""
+@lru_cache(maxsize=2)
+def _leer_oficial(ruta: str, _mtime: float) -> pd.DataFrame:
+    """Lectura cacheada del corpus oficial; el mtime invalida si cambia."""
+    return pd.read_parquet(ruta)
+
+
+def _corpus_oficial() -> pd.DataFrame:
+    """El corpus que cargó el administrador. Vacío si no hay."""
     if not RUTA_BIBLIA.exists():
+        # Una descarga por llamada sería lenta: la nube recuerda por un
+        # minuto los archivos que no existen (ver nube._NO_EXISTE).
         nube.bajar_archivo(nube.clave_estado(ARCHIVO_BIBLIA), RUTA_BIBLIA)
     if not RUTA_BIBLIA.exists():
         return pd.DataFrame(columns=COLUMNAS)
     try:
-        df = pd.read_parquet(RUTA_BIBLIA)
+        df = _leer_oficial(str(RUTA_BIBLIA), RUTA_BIBLIA.stat().st_mtime)
     except Exception:
         return pd.DataFrame(columns=COLUMNAS)
-    return df if all(c in df.columns for c in COLUMNAS) else pd.DataFrame(columns=COLUMNAS)
+    return df.copy() if all(c in df.columns for c in COLUMNAS) \
+        else pd.DataFrame(columns=COLUMNAS)
+
+
+def es_ejemplo() -> bool:
+    """True si se está mostrando el texto de ejemplo y no el oficial."""
+    return _corpus_oficial().empty and not semilla.nuevo_testamento().empty
+
+
+def leer_corpus() -> pd.DataFrame:
+    """
+    El texto a mostrar: el oficial de la SBC si está cargado; si no, el
+    Nuevo Testamento RV1909 de ejemplo. Vacío solo si no hay ninguno.
+    """
+    oficial = _corpus_oficial()
+    return oficial if not oficial.empty else semilla.nuevo_testamento()
 
 
 def hay_texto() -> bool:
@@ -115,6 +145,30 @@ def capitulo(version: str, libro: str, numero: int) -> pd.DataFrame:
     return sel.sort_values("versiculo").reset_index(drop=True)
 
 
+def vecinos(version: str, libro: str, numero: int) -> tuple:
+    """
+    Capítulo anterior y siguiente, CRUZANDO libros: después de Mateo 28
+    viene Marcos 1. Devuelve ((libro, cap) | None, (libro, cap) | None).
+
+    Así se lee de corrido sin volver al selector cada vez que termina un
+    libro, que es como se lee una Biblia de papel.
+    """
+    df = leer_corpus()
+    if df.empty:
+        return None, None
+    df = df[df["version"].astype(str) == str(version)]
+    orden = (df[["orden", "libro", "capitulo"]].drop_duplicates()
+             .sort_values(["orden", "capitulo"]))
+    pares = [(str(l), int(c)) for l, c in zip(orden["libro"], orden["capitulo"])]
+    try:
+        i = pares.index((str(libro), int(numero)))
+    except ValueError:
+        return None, None
+    anterior = pares[i - 1] if i > 0 else None
+    siguiente = pares[i + 1] if i < len(pares) - 1 else None
+    return anterior, siguiente
+
+
 def buscar_texto(consulta: str, version: str | None = None,
                  limite: int = 30) -> pd.DataFrame:
     """
@@ -145,7 +199,8 @@ def resumen() -> dict:
     """Cifras para la pantalla de administración."""
     df = leer_corpus()
     if df.empty:
-        return {"versiones": 0, "libros": 0, "versiculos": 0, "detalle": []}
+        return {"versiones": 0, "libros": 0, "versiculos": 0, "detalle": [],
+                "es_ejemplo": False}
     detalle = []
     for v in sorted(df["version"].astype(str).unique()):
         sub = df[df["version"].astype(str) == v]
@@ -153,4 +208,5 @@ def resumen() -> dict:
                         "versiculos": int(len(sub))})
     return {"versiones": df["version"].nunique(),
             "libros": int(df["libro"].nunique()),
-            "versiculos": int(len(df)), "detalle": detalle}
+            "versiculos": int(len(df)), "detalle": detalle,
+            "es_ejemplo": es_ejemplo()}

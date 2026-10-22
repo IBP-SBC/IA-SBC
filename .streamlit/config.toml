@@ -1,8 +1,28 @@
 # Configuración mínima.
 #
-# IMPORTANTE: NO definir [theme]. Cualquier valor ahí (aunque sea solo
-# primaryColor) hace que Streamlit asuma base = "light" y fuerce el modo
-# claro, ignorando la preferencia del sistema operativo del usuario.
+# EL TEMA: solo el color de acento, uno por modo.
+#
+# · NUNCA [theme] a secas. Cualquier valor ahí (aunque sea solo
+#   primaryColor) hace que Streamlit asuma base = "light" y fuerce el modo
+#   claro, ignorando la preferencia del sistema operativo del usuario.
+# · [theme.light] y [theme.dark] SÍ respetan esa preferencia: cada modo
+#   toma su acento y el celular sigue decidiendo si se ve claro u oscuro.
+#   Verificado en un navegador con Streamlit 1.57.0 en los dos modos.
+#
+# POR QUÉ HACE FALTA: el acento de fábrica de Streamlit es ROJO (#ff4b4b)
+# y aparecía en el borde de cada campo al tocarlo (selectores, cantidad,
+# buscador, clave). Con el color acá, ningún elemento queda rojo, incluidos
+# los que no se pueden alcanzar con CSS de forma estable.
+#
+# Los valores son COLOR_PRIMARIO y COLOR_PRIMARIO_OSCURO de
+# src/nucleo/config.py (este archivo no puede importarlos; la auditoría
+# comprueba que coincidan).
 
 [browser]
 gatherUsageStats = false
+
+[theme.light]
+primaryColor = "#1f4e79"
+
+[theme.dark]
+primaryColor = "#6ea8dc"

@@ -35,7 +35,7 @@ from nucleo.modelo import (
 )
 from nucleo.util import sello_legible, tam_legible
 
-tope("Administrar", "Configuración de la app")
+tope("Configuración", "Solo para administradores")
 solo_admin()
 
 st.caption(f"Sesión de {usuario_actual()}")
@@ -140,7 +140,12 @@ with t_texto:
     encabezado_carga(
         titulo="Texto bíblico",
         estado="",
-        resumen=(f"**{res['versiculos']:,} versículos** de {res['libros']} "
+        resumen=("**Se muestra el texto de ejemplo**: Nuevo Testamento "
+                 "Reina-Valera 1909, dominio público "
+                 f"({res['versiculos']:,} versículos). Cuando cargues las "
+                 "versiones de la SBC, el ejemplo deja de mostrarse.".replace(",", ".")
+                 if res.get("es_ejemplo") else
+                 f"**{res['versiculos']:,} versículos** de {res['libros']} "
                  f"libros en {res['versiones']} versión(es)".replace(",", ".")
                  if res["versiculos"] else "**Sin texto cargado todavía.**"),
         ultima=None,
@@ -187,10 +192,15 @@ with t_texto:
 with t_precios:
     params = cotizador.leer_parametros()
     precios = cotizador.leer_precios()
+    adicionales = cotizador.leer_adicionales()
+    simulada = cotizador.es_simulada()
     encabezado_carga(
         titulo="Lista de precios",
         estado="",
-        resumen=(f"**{len(precios)} combinaciones** cargadas"
+        resumen=(f"**Lista de PRUEBA activa** ({len(precios)} combinaciones). "
+                 "La pantalla pública avisa que los precios son simulados."
+                 if simulada else
+                 f"**Lista oficial**: {len(precios)} combinaciones"
                  if not precios.empty else
                  "**Sin lista de precios.** El cotizador funciona igual, pero "
                  "sin calcular el valor: envía la solicitud a comercial."),
@@ -206,8 +216,27 @@ with t_precios:
             "con las columnas `concepto`, `tipo` (unitario o fijo), `valor` y "
             "`aplica_a`.\n"
             "- Los precios se validan al cargar: si hay celdas vacías, texto "
-            "donde va un número o precios en cero, **no se guarda nada**."),
+            "donde va un número o precios en cero, **no se guarda nada**.\n"
+            "- Cargar una lista **reemplaza también sus agregados**. Si el "
+            "archivo nuevo no trae la hoja `adicionales`, los anteriores se "
+            "borran."),
     )
+    # La lista de prueba se ofrece solo si no hay una oficial: cargarla
+    # encima de la oficial la reemplazaría.
+    if precios.empty or simulada:
+        c1, c2 = st.columns(2)
+        if c1.button("Cargar lista de prueba", key="_adm_prueba_cargar",
+                     use_container_width=True, disabled=simulada,
+                     help="Precios SIMULADOS para probar el cotizador."):
+            ok, msg = cotizador.cargar_lista_de_prueba(usuario_actual())
+            (st.success if ok else st.error)(msg)
+            if ok:
+                st.rerun()
+        if c2.button("Quitar la lista de prueba", key="_adm_prueba_quitar",
+                     use_container_width=True, disabled=not simulada):
+            st.info(cotizador.borrar_lista())
+            st.rerun()
+
     st.download_button("Descargar la plantilla", cotizador.plantilla_csv(),
                        file_name="plantilla_precios_sbc.csv", mime="text/csv",
                        key="_adm_plantilla")
@@ -226,6 +255,10 @@ with t_precios:
     if not precios.empty:
         st.dataframe(precios, hide_index=True, use_container_width=True,
                      height=min(38 + 35 * len(precios), 360))
+    if not adicionales.empty:
+        st.markdown("##### Agregados")
+        st.dataframe(adicionales, hide_index=True, use_container_width=True,
+                     height=min(38 + 35 * len(adicionales), 240))
 
     st.markdown("##### A dónde llegan las solicitudes")
     numero = st.text_input(

@@ -279,6 +279,89 @@ check("Tras rechazar, la tabla anterior sigue intacta",
       len(cotizador.leer_precios()) == 2,
       "una carga inválida no puede dejar a la app sin precios")
 
+
+print("\n═══ 5-ter. AGREGADOS POR FAMILIA Y LISTA DE PRUEBA ═══")
+# Bug real de la v2.2: el agregado se buscaba solo por concepto; si la
+# primera fila era de otra familia, desaparecía sin aviso.
+_pd.DataFrame([{"familia": "Nuevo Testamento", "referencia": "NT", "version": "RVR",
+                "tamano": "B", "cubierta": "T", "desde_cantidad": 1000,
+                "precio_unitario": 6500, "minimo": 1000, "dias_entrega": 45,
+                "incluye": ""}]).to_parquet(cotizador.RUTA_PRECIOS, index=False)
+_pd.DataFrame([{"concepto": "Inserto", "tipo": "unitario", "valor": 1500, "aplica_a": "Biblia"},
+               {"concepto": "Inserto", "tipo": "unitario", "valor": 1200, "aplica_a": "Nuevo Testamento"},
+               {"concepto": "Sello", "tipo": "fijo", "valor": 9000, "aplica_a": "todas"},
+               {"concepto": "Sello", "tipo": "fijo", "valor": 7000, "aplica_a": "Nuevo Testamento"}]
+              ).to_parquet(cotizador.RUTA_ADICIONALES, index=False)
+_nt = cotizador.cotizar("Nuevo Testamento", 1000, {"version": "RVR"}, ["Inserto", "Sello"])
+check("Un agregado con precio por familia se cobra con el de ESA familia",
+      _nt["ok"] and _nt["total"] == 6_500_000 + 1200 * 1000 + 7000,
+      f"total {_nt.get('total')}: antes de la v2.3 el inserto desaparecía sin aviso")
+check("El precio propio de la familia gana sobre el general ('todas')",
+      any(a["concepto"] == "Sello" and a["monto"] == 7000 for a in _nt["adicionales"]))
+check("Solo se ofrecen los agregados que aplican a la familia",
+      cotizador.adicionales_para("Tratado") == ["Sello"]
+      and cotizador.adicionales_para("Nuevo Testamento") == ["Inserto", "Sello"])
+
+def _xlsx(precios_df, adic_df=None):
+    import io as _io2
+    buf = _io2.BytesIO()
+    with _pd.ExcelWriter(buf, engine="openpyxl") as w:
+        precios_df.to_excel(w, sheet_name="precios", index=False)
+        if adic_df is not None:
+            adic_df.to_excel(w, sheet_name="adicionales", index=False)
+    return buf.getvalue()
+
+_base = _pd.read_parquet(cotizador.RUTA_PRECIOS)
+_ok_t, _m_t = cotizador.cargar_tabla(_xlsx(_base, _pd.DataFrame(
+    [{"concepto": "X", "tipo": "por caja", "valor": 10, "aplica_a": "todas"}])), "l.xlsx", "aud")
+check("Un agregado con tipo desconocido se RECHAZA (antes se cobraba como fijo)",
+      not _ok_t and "unitario" in _m_t)
+_ok_v, _m_v = cotizador.cargar_tabla(_xlsx(_base, _pd.DataFrame(
+    [{"concepto": "X", "tipo": "fijo", "valor": "$1.500", "aplica_a": "todas"}])), "l.xlsx", "aud")
+check("Un valor escrito como texto se RECHAZA (antes se volvía $0 sin aviso)",
+      not _ok_v and "número" in _m_v)
+_ok_d, _m_d = cotizador.cargar_tabla(_xlsx(_base, _pd.DataFrame(
+    [{"concepto": "X", "tipo": "fijo", "valor": 1, "aplica_a": "Biblia"},
+     {"concepto": "X", "tipo": "fijo", "valor": 2, "aplica_a": "Biblia"}])), "l.xlsx", "aud")
+check("Un concepto repetido para la misma familia se RECHAZA", not _ok_d and "repetidos" in _m_d)
+check("Tras un rechazo, los agregados anteriores siguen intactos",
+      len(cotizador.leer_adicionales()) == 4)
+_ok_s, _ = cotizador.cargar_tabla(_xlsx(_base), "l.xlsx", "aud")
+check("Una lista nueva SIN hoja de agregados borra los anteriores",
+      _ok_s and cotizador.leer_adicionales().empty,
+      "los agregados de una lista de prueba no pueden sobrevivir a la oficial")
+
+_okp, _mp = cotizador.cargar_lista_de_prueba("aud")
+check("La lista de prueba carga por el MISMO camino que una real", _okp, _mp)
+check("La lista de prueba queda marcada como simulada", cotizador.es_simulada())
+_c = cotizador.cotizar
+_b800 = _c("Biblia", 800, {"version": "RVR"})
+check("Prueba · 800 Biblias = 800 × $42.000 = $33.600.000",
+      _b800["ok"] and _b800["total"] == 33_600_000, f"dio {_b800.get('total')}")
+check("Prueba · 1.600 Biblias toman la escala de $39.900 = $63.840.000",
+      _c("Biblia", 1600, {"version": "TLA"})["total"] == 63_840_000)
+check("Prueba · 3.200 Biblias toman la escala de $37.800 = $120.960.000",
+      _c("Biblia", 3200, {"version": "RVR"})["total"] == 120_960_000)
+_comp = _c("Biblia", 800, {"version": "RVR"},
+           ["Hoja de inserto personalizada", "Plancha de estampado de la cubierta"])
+check("Prueba · 800 Biblias + inserto ($1.500 c/u) + plancha ($350.000 una vez) = $35.150.000",
+      _comp["total"] == 33_600_000 + 1_200_000 + 350_000, f"dio {_comp.get('total')}")
+check("Prueba · 1.000 NT + inserto de NT ($1.200 c/u) = $7.700.000",
+      _c("Nuevo Testamento", 1000, {"version": "RVR"},
+         ["Hoja de inserto personalizada"])["total"] == 7_700_000)
+check("Prueba · 12.000 tratados toman la escala de $150 = $1.800.000",
+      _c("Tratado", 12000, {})["total"] == 1_800_000)
+check("Prueba · 1.500 Evangelios quedan bajo el mínimo de 2.000",
+      _c("Evangelio", 1500, {"version": "RVR"})["motivo"] == "bajo_minimo")
+check("Prueba · 'Producto propio' se cotiza a pedido, sin precio inventado",
+      _c("Producto propio", 500, {})["motivo"] == "a_pedido")
+check("La solicitud enviada con la lista de prueba lo dice en la primera línea",
+      cotizador.texto_solicitud(_b800, {"familia": "Biblia"}, {}, simulada=True)
+      .startswith("*** PRUEBA"))
+cotizador.borrar_lista()
+check("Quitar la lista de prueba deja el cotizador sin precios y sin marca",
+      not cotizador.hay_precios() and not cotizador.es_simulada())
+
 print("\n═══ 6. CONTEXTO QUE VIAJA AL MODELO ═══")
 system = modelo.construir_system(res)
 check("El system incluye las instrucciones del negocio",
@@ -450,6 +533,99 @@ check("La demo no toca el índice ni la configuración de la SBC",
       and "nucleo.biblia" not in _ml_src,
       "la demo tiene que vivir aislada de los documentos internos")
 
+
+print("\n═══ 7-ter. NUEVO TESTAMENTO DE EJEMPLO (RV1909) ═══")
+from nucleo import semilla, biblia  # noqa: E402
+import re as _re3  # noqa: E402
+
+_nt_df = semilla.nuevo_testamento()
+_CANON = {"Mateo": 28, "Marcos": 16, "Lucas": 24, "Juan": 21, "Hechos": 28, "Romanos": 16,
+          "1 Corintios": 16, "2 Corintios": 13, "Gálatas": 6, "Efesios": 6, "Filipenses": 4,
+          "Colosenses": 4, "1 Tesalonicenses": 5, "2 Tesalonicenses": 3, "1 Timoteo": 6,
+          "2 Timoteo": 4, "Tito": 3, "Filemón": 1, "Hebreos": 13, "Santiago": 5, "1 Pedro": 5,
+          "2 Pedro": 3, "1 Juan": 5, "2 Juan": 1, "3 Juan": 1, "Judas": 1, "Apocalipsis": 22}
+_caps_real = _nt_df.groupby("libro")["capitulo"].nunique().to_dict()
+check("27 libros y los capítulos de cada uno iguales al canon (260)",
+      _caps_real == _CANON, f"diferencias: { {k: (_caps_real.get(k), v) for k, v in _CANON.items() if _caps_real.get(k) != v} }")
+check("7.955 versículos con texto (2 Co 13:14 y Hch 19:41 vienen dentro del anterior)",
+      len(_nt_df) == 7955
+      and int(_nt_df[_nt_df["libro"] == "2 Corintios"]["versiculo"][_nt_df["capitulo"] == 13].max()) == 13
+      and int(_nt_df[_nt_df["libro"] == "Hechos"]["versiculo"][_nt_df["capitulo"] == 19].max()) == 40,
+      f"hay {len(_nt_df)}")
+check("Ningún versículo vacío ni con restos de marcado",
+      not _nt_df["texto"].astype(str).str.strip().eq("").any()
+      and not _nt_df["texto"].astype(str).str.contains(r"[<>]|[GH]\d{3,}", regex=True).any())
+check("Sin las 14 notas finales de las epístolas (no son texto bíblico)",
+      not _nt_df["texto"].astype(str).str.contains(
+          r"fué escrita|Escrita de|Enviada de|fué enviada", regex=True).any(),
+      "el archivo fuente pegaba 'Fué escrita de Corinto…' dentro del último versículo")
+check("Romanos 16:27 termina en 'Amén.'",
+      _nt_df[(_nt_df["libro"] == "Romanos") & (_nt_df["capitulo"] == 16)
+             & (_nt_df["versiculo"] == 27)]["texto"].iloc[0].endswith("para siempre. Amén."))
+check("Cada libro tiene un único número de orden, de 40 (Mateo) a 66 (Apocalipsis)",
+      sorted(_nt_df.groupby("libro")["orden"].first().tolist()) == list(range(40, 67))
+      and _nt_df.groupby("libro")["orden"].nunique().max() == 1)
+check("Filipenses 4:13 es el de 1909",
+      _nt_df[(_nt_df["libro"] == "Filipenses") & (_nt_df["capitulo"] == 4)
+             & (_nt_df["versiculo"] == 13)]["texto"].iloc[0]
+      == "Todo lo puedo en Cristo que me fortalece.")
+
+check("Sin texto oficial cargado, la Biblia muestra el ejemplo y lo sabe",
+      biblia.es_ejemplo() and len(biblia.leer_corpus()) == 7955
+      and biblia.resumen()["es_ejemplo"] is True)
+_ant, _sig = biblia.vecinos("RV1909", "Mateo", 28)
+check("'Siguiente' cruza de libro: después de Mateo 28 viene Marcos 1",
+      _sig == ("Marcos", 1) and _ant == ("Mateo", 27))
+check("Primer y último capítulo: sin anterior ni siguiente",
+      biblia.vecinos("RV1909", "Mateo", 1)[0] is None
+      and biblia.vecinos("RV1909", "Apocalipsis", 22)[1] is None)
+_ok_b, _ = biblia.guardar_corpus(_pd.DataFrame([
+    {"version": "RVR", "libro": "Juan", "orden": 43, "capitulo": 1, "versiculo": 1, "texto": "x"}]))
+check("Al cargar un texto oficial, el ejemplo deja de mostrarse",
+      _ok_b and not biblia.es_ejemplo() and biblia.versiones() == ["RVR"])
+biblia.RUTA_BIBLIA.unlink(missing_ok=True)
+check("Si se retira el oficial, vuelve el ejemplo", biblia.es_ejemplo())
+
+print("\n═══ 7-quater. NUBE: MEMORIA DE LO QUE NO EXISTE ═══")
+# Se carga una copia AISLADA de nube.py (la de arriba está intervenida para
+# no tocar la red) y se le pone un 'requests' falso que cuenta llamadas.
+import importlib.util as _iu  # noqa: E402
+_spec = _iu.spec_from_file_location("nube_aislada", RAIZ / "src/nucleo/nube.py")
+_nube = _iu.module_from_spec(_spec); _spec.loader.exec_module(_nube)
+_llamadas = {"get": 0}
+
+class _Resp:
+    def __init__(self, code): self.status_code, self.content = code, b"x"
+
+class _ReqFalso:
+    class exceptions: Timeout = TimeoutError
+    estado_get = 400
+    @staticmethod
+    def get(*a, **k):
+        _llamadas["get"] += 1
+        if _ReqFalso.estado_get == "error":
+            raise ConnectionError("red caída")
+        return _Resp(_ReqFalso.estado_get)
+    @staticmethod
+    def post(*a, **k): return _Resp(200)
+
+_nube.requests = _ReqFalso
+_nube._config = lambda: {"url": "https://x", "key": "k", "bucket": "b"}
+for _ in range(6):
+    _nube.bajar_bytes("estado/biblia.parquet")
+check("Un archivo que no existe se consulta UNA vez, no en cada toque",
+      _llamadas["get"] == 1, f"hubo {_llamadas['get']} consultas para 6 lecturas")
+_nube.subir_bytes("estado/biblia.parquet", b"x")
+_nube.bajar_bytes("estado/biblia.parquet")
+check("Subir el archivo borra el recuerdo: la siguiente lectura sí consulta",
+      _llamadas["get"] == 2)
+_llamadas["get"] = 0; _ReqFalso.estado_get = "error"
+for _ in range(3):
+    _nube.bajar_bytes("estado/otro.json")
+check("Un error de RED no se recuerda como 'no existe' (puede ser pasajero)",
+      _llamadas["get"] == 3,
+      "dar por inexistente un archivo que sí existe es el patrón que borró histórico")
+
 print("\n═══ 8. ARQUITECTURA ═══")
 _fuentes_nucleo = list((RAIZ / "src/nucleo").rglob("*.py"))
 _dibujan = []
@@ -557,14 +733,162 @@ _toml = [l.strip() for l in
 check("config.toml NO define [theme]",
       "[theme]" not in _toml,
       "definir [theme] fuerza el modo claro para todos los usuarios")
+
+# ── Acceso de administrador ──────────────────────────────────────────
+import tomllib as _toml  # noqa: E402
+_ej = _toml.loads((RAIZ / ".streamlit/secrets.toml.ejemplo").read_text(encoding="utf-8"))
+check("El ejemplo de Secrets produce [usuarios] con el administrador ADENTRO",
+      "usuarios" in _ej and "director.promocion@sbcol.org" in _ej["usuarios"]
+      and _ej["usuarios"]["director.promocion@sbcol.org"].get("rol") == "admin"
+      and not any(str(k).startswith("usuarios.") for k in _ej),
+      "en la v2.0 se documentó ['usuarios.NOMBRE'], que crea otra sección: nadie podía entrar")
+# Ninguna clave real en el repositorio. El check NO conoce la clave (si la
+# tuviera escrita, la estaría publicando): busca cualquier línea de estilo
+# TOML  clave = "…"  cuyo valor no sea uno de los marcadores de ejemplo.
+_MARCADORES = {"PEGAR_AQUI_LA_CLAVE", "TU_CLAVE", "CAMBIAR", "CAMBIAR_POR_UNA_CLAVE_LARGA",
+               "LA_MISMA_CLAVE_DE_SIEMPRE", "cambiar-en-secrets", "...", ""}
+_con_clave = []
+for _f in RAIZ.rglob("*"):
+    if not _f.is_file() or ".git" in _f.parts or _f.name == "auditoria_iasbc.py" or _f.suffix not in (
+            ".py", ".md", ".toml", ".txt", ".ejemplo", ".ipynb", ".json", ".bat", ".command"):
+        continue
+    for _v in _re3.findall(r'clave\s*=\s*\\?["\']([^"\'\\]*)\\?["\']',
+                           _f.read_text(encoding="utf-8", errors="ignore")):
+        if _v.strip() not in _MARCADORES:
+            _con_clave.append(f"{_f.relative_to(RAIZ)}: {_v[:2]}…")
+check("Ninguna clave real escrita en el repositorio (solo marcadores de ejemplo)",
+      not _con_clave, f"revisá: {_con_clave}")
+check("No hay un secrets.toml real dentro del repositorio",
+      not (RAIZ / ".streamlit/secrets.toml").exists())
+_estado_src = (RAIZ / "src/app/estado.py").read_text(encoding="utf-8")
+check("Solo entra quien tenga rol 'admin' (antes entraba cualquier usuario)",
+      'usuarios[match].get("rol") == ROL_ADMIN' in _estado_src)
+check("El usuario de fábrica NO vale en la nube (solo sin ningún secreto)",
+      "return {} if _secretos_existen() else dict(USUARIOS_DEFECTO)" in _estado_src,
+      "hasta la v2.2 'admin / cambiar-en-secrets' abría la configuración en la nube")
+check("La clave se compara en tiempo constante y un fallo hace esperar",
+      "hmac.compare_digest" in _estado_src and "time.sleep(PAUSA_INTENTO_FALLIDO)" in _estado_src)
+check("El formulario no muestra el nombre del administrador como ejemplo",
+      "PEÑA JOSE ALBERTO" not in _estado_src.split("def solo_admin")[1])
+_bloque_acc = _css[_css.index(".st-key-acceso_tope {"):_css.index(".st-key-acceso_tope .stButton")]
+check("El botón Entrar está en la esquina superior IZQUIERDA",
+      "left: 0.9rem;" in _bloque_acc and "right:" not in _bloque_acc)
+import app.ui as _ui_mod  # noqa: E402
+_css_sbc = _ui_mod._CSS                      # el estilo YA armado, como llega al navegador
+_bloque_barra_sbc = _css_sbc[_css_sbc.index(".st-key-barra_inferior {"):]
+_bloque_barra_sbc = _bloque_barra_sbc[:_bloque_barra_sbc.index("}")]
+check("La barra de la SBC deja libre la esquina del distintivo de Streamlit Cloud",
+      f"right: {_ui_mod._RESERVA_BADGE}px;" in _bloque_barra_sbc
+      and _ui_mod._RESERVA_BADGE >= 100
+      and "width: auto !important;" in _bloque_barra_sbc
+      and "bottom: 0;" in _bloque_barra_sbc
+      and "_ALTO_BADGE" not in (RAIZ / "src/app/ui.py").read_text(encoding="utf-8"),
+      "la versión a medias levantaba la barra y dejaba ver el texto por debajo")
+_multis = [(f.name, m) for f in (RAIZ / "src/app").rglob("*.py")
+           for m in _re3.findall(r"st\.multiselect\((?:[^()]|\([^()]*\))*\)",
+                                 f.read_text(encoding="utf-8"))]
+check("Todo selector múltiple trae su texto en español (Streamlit pone 'Choose options')",
+      all("placeholder=" in m for _, m in _multis),
+      f"sin placeholder: {[n for n, m in _multis if 'placeholder=' not in m]}")
+_regla_prim = _css_sbc[_css_sbc.index('.stButton > button[kind="primary"],'):]
+_regla_prim = _regla_prim[:_regla_prim.index("}")]
+check("La regla general de botones NO usa !important (aplastaba la pestaña activa de la barra)",
+      "!important" not in _regla_prim,
+      "con !important la pestaña activa quedaba azul sobre azul, sin texto visible")
+check("El botón de enviar un formulario (el 'Entrar') usa el azul institucional",
+      'button[kind="primaryFormSubmit"]' in _css_sbc,
+      "salía con el rojo por defecto de Streamlit")
+check("La extracción del Nuevo Testamento viaja con el código (procedencia)",
+      (RAIZ / "herramientas/extraer_nt_rv1909.py").exists())
 _datos_prohibidos = [p for p in (RAIZ / "data").rglob("*") if p.is_file()
                      and p.name != ".gitkeep" and "semilla" not in p.parts]
 check("El repositorio viaja sin datos de la SBC",
       not _datos_prohibidos,
       f"data/documentos y data/estado deben ir vacíos: {_datos_prohibidos}")
-check("La única semilla que viaja es texto de dominio público",
-      sorted(p.name for p in (RAIZ / "data/semilla").glob("*")) == ["juan_rv1909.csv"],
+check("En data/semilla solo viajan el NT de dominio público y la lista SIMULADA",
+      sorted(p.name for p in (RAIZ / "data/semilla").glob("*"))
+      == ["nt_rv1909.csv", "precios_simulados.xlsx"],
       "data/semilla es solo para la RV1909; nada de la SBC va ahí")
+
+# ── Color de acento por modo (v2.3) ──────────────────────────────────
+# Nació del borde ROJO de cada campo al tocarlo (el acento de fábrica de
+# Streamlit). [theme] a secas forzaría el modo claro; [theme.light] y
+# [theme.dark] respetan la preferencia del sistema (verificado en un
+# navegador con Streamlit 1.57.0, en los dos modos).
+import tomllib as _tomllib  # noqa: E402
+from nucleo.config import COLOR_PRIMARIO as _CP, COLOR_PRIMARIO_OSCURO as _CPO  # noqa: E402
+
+_tema = _tomllib.loads((RAIZ / ".streamlit/config.toml").read_text(encoding="utf-8")).get("theme", {})
+check("El tema solo define el acento de cada modo ([theme.light] y [theme.dark])",
+      set(_tema) == {"light", "dark"}
+      and all(isinstance(_tema[m], dict) and set(_tema[m]) == {"primaryColor"}
+              for m in ("light", "dark")),
+      f"claves en [theme]: {sorted(_tema)} — cualquier otra (base, fondo…) puede "
+      "forzar un modo para todos")
+check("El acento del tema es el azul de la SBC en los dos modos (config.toml = nucleo/config.py)",
+      str(_tema.get("light", {}).get("primaryColor", "")).lower() == _CP.lower()
+      and str(_tema.get("dark", {}).get("primaryColor", "")).lower() == _CPO.lower(),
+      "si no coinciden, la app muestra dos azules distintos")
+
+
+def _luminancia(h: str) -> float:
+    h = h.lstrip("#")
+    r, g, b = (int(h[i:i + 2], 16) / 255 for i in (0, 2, 4))
+    lin = [c / 12.92 if c <= 0.03928 else ((c + 0.055) / 1.055) ** 2.4 for c in (r, g, b)]
+    return 0.2126 * lin[0] + 0.7152 * lin[1] + 0.0722 * lin[2]
+
+
+def _contraste(a: str, b: str) -> float:
+    x, y = sorted((_luminancia(a), _luminancia(b)), reverse=True)
+    return (x + 0.05) / (y + 0.05)
+
+
+_FONDO_OSCURO = "#0e1117"                     # el fondo del modo oscuro de Streamlit
+check("El acento del modo oscuro se lee sobre el fondo oscuro (contraste ≥ 4,5:1)",
+      _contraste(_CPO, _FONDO_OSCURO) >= 4.5,
+      f"contraste {_contraste(_CPO, _FONDO_OSCURO):.2f}:1")
+_media_osc = (_css_sbc[_css_sbc.index("@media (prefers-color-scheme: dark)"):]
+              if "@media (prefers-color-scheme: dark)" in _css_sbc else "")
+check("En modo oscuro la pestaña activa de la barra usa el azul aclarado",
+      '.st-key-barra_inferior .stButton > button[kind="primary"]' in _media_osc[:400]
+      and f"color: {_CPO};" in _media_osc[:400],
+      f"el azul institucional sobre el fondo oscuro tiene contraste "
+      f"{_contraste(_CP, _FONDO_OSCURO):.2f}:1: la pestaña activa casi no se leía")
+check("Los botones principales siguen en el azul oscuro: texto blanco legible en los dos modos",
+      f"background-color: {_CP};" in _regla_prim and _contraste("#ffffff", _CP) >= 4.5,
+      "con el acento claro del modo oscuro, el texto blanco quedaría en 2,5:1")
+check("En la demo Millca el borde de un campo al tocarlo es rosa, no el azul de la SBC",
+      all('[data-testid="stTextAreaRootElement"]:focus-within' in c
+          and f'border-color: {_ml_estilo.PALETAS[k]["rosa"]} !important;' in c
+          for k, c in _css_ml_por_tema.items()),
+      "la demo tiene que verse como la app de Millca, no como la de la SBC")
+check("Streamlit sigue fijo en la 1.57.0, la versión en que se verificó la piel en un navegador",
+      "streamlit==1.57.0" in (RAIZ / "requirements.txt").read_text(encoding="utf-8"),
+      "en la 1.66 cambian los selectores del selectbox y de las pestañas que usa la piel "
+      "de Millca: subir de versión exige revisarla primero")
+
+# ── Al cambiar de capítulo, la pantalla va a su comienzo (v2.3) ──────
+# Los botones están al final del texto: sin esto, el capítulo nuevo se
+# abría mostrando su FINAL y había que subir a mano en cada capítulo.
+_src_bib = (RAIZ / "src/app/paginas/biblia.py").read_text(encoding="utf-8")
+_src_pal = (RAIZ / "src/app/millca/palabra.py").read_text(encoding="utf-8")
+_src_ui = (RAIZ / "src/app/ui.py").read_text(encoding="utf-8")
+
+
+def _ultima_linea(txt: str) -> str:
+    return [l.strip() for l in txt.splitlines() if l.strip()][-1]
+
+
+check("Las dos Biblias llevan la pantalla al comienzo del capítulo nuevo, y el ancla existe",
+      'llevar_a(".st-key-bib_capitulo"' in _src_bib and 'key="bib_capitulo"' in _src_bib
+      and 'llevar_a(".ml-lectura"' in _src_pal and 'class="ml-lectura"' in _src_pal,
+      "si el ancla no existe, el script lleva arriba del todo en vez de al capítulo")
+check("El salto va al FINAL de cada página (cuando corre, el capítulo ya está dibujado)",
+      _ultima_linea(_src_bib).startswith("llevar_a(")
+      and _ultima_linea(_src_pal).startswith("llevar_a("))
+check("El salto no depende de la etiqueta del contenedor de Streamlit",
+      "section[data-testid" not in _src_ui and "unsafe_allow_javascript=True" in _src_ui,
+      "en la 1.57 el contenedor que se desplaza es <section> y en la 1.66 <main>")
 
 print("\n" + "═" * 60)
 if _FALLOS:

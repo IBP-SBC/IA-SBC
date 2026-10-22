@@ -12,7 +12,7 @@ DOS DECISIONES DE NAVEGACIÓN
 · **Tres secciones abajo, siempre en una fila.** Esta app se usa de pie,
   con una mano. El menú lateral de Streamlit obliga a tocar la esquina
   superior izquierda, la más lejos del pulgar, así que se oculta.
-· **La configuración vive arriba a la derecha**, fuera del camino. Quien
+· **La configuración vive arriba a la izquierda**, fuera del camino. Quien
   abre la app viene a conversar, leer o cotizar; administrar es otra
   cosa y no merece un cuarto botón compitiendo con esas tres.
 """

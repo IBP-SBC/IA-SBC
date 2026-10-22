@@ -80,10 +80,35 @@ volver a romperse, se agrega un check a `auditoria_iasbc.py`.
 | El **nombre del archivo es la identidad** del documento | Subir otra vez `Informe 2025.pdf` lo actualiza. `Informe 2025 v2.pdf` es otro documento: no se adivinan identidades parecidas. |
 | **Guarda anti-pisado** del registro | El disco de Streamlit Cloud es efímero. En `sbc_ventas` ese patrón borró histórico tres veces. |
 | Extensión ≠ contenido se **rechaza**, no se adivina | Un `.pdf` que por dentro es un Word se lee mal y nadie sabría por qué. Mejor decir qué es y cómo renombrarlo. |
+| El tema define **solo el acento, uno por modo** (`[theme.light]` y `[theme.dark]`), nunca `[theme]` a secas | `[theme]` fuerza el modo claro para todos. Las dos secciones por modo respetan la preferencia del celular y quitan el rojo de fábrica de Streamlit de todos los campos (verificado en un navegador, en claro y en oscuro). |
+| **Streamlit fijo en 1.57.0** | La piel (CSS) se verificó en un navegador con esa versión. En la 1.66 cambian los selectores del selectbox y de las pestañas que usa la demo Millca: subir de versión exige revisarla primero. |
 
 ---
 
 ## Versiones
+
+- **2.3.0** — Acceso: el administrador es `director.promocion@sbcol.org`
+  (la clave vive solo en los Secrets). Se corrigieron tres huecos: la
+  sección de usuarios que documenté en la v2.0 tenía una sintaxis TOML que
+  no creaba usuarios; en ese caso la app caía en un usuario de fábrica
+  escrito en el código; y no se miraba el rol, así que cualquier usuario
+  entraba a la configuración. El botón Entrar pasó arriba a la izquierda.
+  Biblia: **Nuevo Testamento Reina-Valera 1909** de ejemplo (27 libros,
+  260 capítulos, 7.955 versículos, sin las notas finales de las epístolas)
+  mientras no haya texto oficial, con navegación que cruza de libro.
+  Los botones Anterior/Siguiente **nunca habían funcionado** (en la SBC ni
+  en Millca): el selector pisaba el valor. Y al pasar de capítulo la
+  pantalla quedaba abajo, en el final del capítulo nuevo: ahora va a su
+  comienzo (verificado en un navegador con Streamlit 1.57 y 1.66). Color:
+  el acento del tema se fija **por modo** (`[theme.light]` y
+  `[theme.dark]`), así ningún campo se pone rojo al tocarlo y el modo
+  oscuro sigue la preferencia del celular; en modo oscuro la pestaña
+  activa de la barra se leía con contraste 2,18:1 y ahora 7,47:1.
+  Cotizador: **lista de precios
+  de prueba** cargable con un botón y anunciada en pantalla; los agregados
+  se cruzan por familia (antes podían desaparecer de la cotización sin
+  aviso) y se validan al cargar. La nube recuerda por un minuto lo que no
+  existe en el bucket, en vez de consultarlo en cada toque.
 
 - **2.2.1** — Demo Millca: la barra inferior **deja libre la esquina del
   distintivo de Streamlit Cloud** (lo pinta la plataforma por fuera de la

@@ -19,6 +19,9 @@ REGLA: exigir_login() ya no existe. Una página de administración llama a
 """
 from __future__ import annotations
 
+import hmac
+import time
+
 import streamlit as st
 
 from nucleo.config import USUARIOS_DEFECTO
@@ -27,28 +30,57 @@ ROL_PUBLICO = "publico"
 ROL_ADMIN = "admin"
 
 
+def _secretos_existen() -> bool:
+    """True si la app tiene CUALQUIER secreto configurado (es decir, la nube)."""
+    try:
+        return len(list(st.secrets.keys())) > 0
+    except Exception:
+        return False
+
+
+def _normalizar_usuario(datos) -> dict:
+    d = dict(datos) if hasattr(datos, "keys") else {"clave": str(datos)}
+    return {"clave": str(d.get("clave", "")),
+            "rol": str(d.get("rol", ROL_ADMIN)).lower().strip()}
+
+
 def _usuarios() -> dict:
     """
-    Usuarios desde st.secrets['usuarios']; si no hay, los de defecto.
+    Administradores definidos en los Secrets de Streamlit. Forma correcta:
 
-        [usuarios."PEÑA JOSE ALBERTO"]
+        [usuarios."director.promocion@sbcol.org"]
         clave = "..."
         rol   = "admin"
+
+    TRES REGLAS, cada una nacida de un error real:
+
+    1. Se acepta también la forma ["usuarios.NOMBRE"]. Es TOML válido pero
+       crea una sección suelta llamada literalmente "usuarios.NOMBRE" en vez
+       de una entrada dentro de [usuarios]. Esa forma la di YO, mal, en las
+       instrucciones de la v2.0; quien la pegó quedó sin poder entrar. Leerla
+       no es adivinar: la sección no tiene otro significado posible.
+    2. El usuario de fábrica (config.USUARIOS_DEFECTO) SOLO vale cuando la
+       app no tiene ningún secreto, o sea en un computador local de prueba.
+       Hasta la v2.2 se usaba también en la nube cuando faltaba [usuarios],
+       y su clave está escrita en el código: era una puerta abierta.
+    3. Si hay secretos pero ningún usuario, se devuelve vacío: nadie entra,
+       y la pantalla de acceso lo dice en vez de fallar en silencio.
     """
+    salida: dict = {}
     try:
         if "usuarios" in st.secrets:
-            salida = {}
             for nombre, datos in dict(st.secrets["usuarios"]).items():
-                d = dict(datos) if hasattr(datos, "keys") else {"clave": str(datos)}
-                salida[str(nombre)] = {
-                    "clave": str(d.get("clave", "")),
-                    "rol": str(d.get("rol", ROL_ADMIN)).lower().strip(),
-                }
-            if salida:
-                return salida
+                salida[str(nombre)] = _normalizar_usuario(datos)
+        for seccion in list(st.secrets.keys()):
+            seccion = str(seccion)
+            if seccion.startswith("usuarios.") and len(seccion) > len("usuarios."):
+                salida[seccion[len("usuarios."):]] = _normalizar_usuario(
+                    st.secrets[seccion])
     except Exception:
-        pass
-    return dict(USUARIOS_DEFECTO)
+        salida = {}
+    if salida:
+        return salida
+    return {} if _secretos_existen() else dict(USUARIOS_DEFECTO)
 
 
 def rol_actual() -> str:
@@ -63,19 +95,37 @@ def usuario_actual() -> str:
     return str(st.session_state.get("_auth_user", "visitante"))
 
 
+# Pausa tras un intento fallido. No impide adivinar, pero convierte miles
+# de intentos por minuto en unos cuarenta: vuelve inviable probar claves a
+# ciegas contra una dirección pública.
+PAUSA_INTENTO_FALLIDO = 1.5
+
+
 def entrar(usuario: str, clave: str) -> bool:
     """
-    Valida credenciales. El usuario se compara sin distinguir mayúsculas
-    ni espacios de sobra: nadie va a escribir "PEÑA JOSE ALBERTO" igual
-    dos veces en un teclado de celular.
+    Valida credenciales de ADMINISTRADOR.
+
+    · El usuario se compara sin mayúsculas ni espacios de sobra (en el
+      celular el corrector pone mayúscula inicial al correo).
+    · Solo entra quien tenga rol "admin". Hasta la v2.2 no se miraba el rol
+      y los usuarios "colaborador" de la plantilla vieja, con clave
+      "CAMBIAR", entraban a la configuración.
+    · La clave se compara en tiempo constante (hmac.compare_digest).
     """
     usuarios = _usuarios()
     entrada = str(usuario).strip().lower()
     match = next((u for u in usuarios if u.strip().lower() == entrada), None)
-    if match and str(clave) == str(usuarios[match].get("clave", "")):
+    valido = (
+        match is not None
+        and usuarios[match].get("rol") == ROL_ADMIN
+        and hmac.compare_digest(str(clave).encode("utf-8"),
+                                str(usuarios[match].get("clave", "")).encode("utf-8"))
+    )
+    if valido:
         st.session_state["_auth_ok"] = True
         st.session_state["_auth_user"] = match
         return True
+    time.sleep(PAUSA_INTENTO_FALLIDO)
     return False
 
 
@@ -96,9 +146,13 @@ def solo_admin() -> None:
     st.markdown("#### Entrar como administrador")
     st.caption("Esta parte es para configurar la app. Si solo querés usarla, "
                "volvé con los botones de abajo.")
+    if not _usuarios():
+        st.warning("No hay administradores configurados en los Secrets de la "
+                   "app. Agregá la sección [usuarios] y reiniciá.")
+        st.stop()
     with st.form("_form_login"):
         usuario = st.text_input("Usuario", key="_inp_user",
-                                placeholder="PEÑA JOSE ALBERTO")
+                                placeholder="correo@sbcol.org")
         clave = st.text_input("Clave", type="password", key="_inp_pass")
         ok = st.form_submit_button("Entrar", use_container_width=True,
                                    type="primary")

@@ -7,35 +7,42 @@ abajo, una cosa por pantalla, poco texto y nada que distraiga.
 CUATRO REGLAS
 
 1. **El pulgar manda.** La navegación va abajo, donde llega el dedo sin
-   estirar la mano. El acceso de configuración va arriba a la derecha,
+   estirar la mano. El acceso de configuración va arriba a la izquierda,
    fuera del camino de quien solo viene a usar la app.
 2. **Sin iconos.** Los nombres se leen; los símbolos hay que
    interpretarlos. Y una fila de emojis de colores delata que la pantalla
    la armó una máquina. Texto y silencio.
-3. **Funciona en claro y en oscuro.** No se define `[theme]` (forzaría el
-   modo claro para todos) y no hay colores de fondo fijos. El único
-   acento fuerte es el dorado del canto, y solo en la lectura.
+3. **Funciona en claro y en oscuro.** El tema solo fija el color de
+   acento, uno por modo ([theme.light] y [theme.dark] en config.toml);
+   nunca [theme] a secas, que forzaría el modo claro para todos. No hay
+   colores de fondo fijos. El único acento fuerte es el dorado del canto,
+   y solo en la lectura.
 4. **Esto dibuja, no calcula.**
 """
 from __future__ import annotations
 
+import json
+
 import streamlit as st
 
-from nucleo.config import COLOR_ACENTO, COLOR_PRIMARIO
+from nucleo.config import COLOR_ACENTO, COLOR_PRIMARIO, COLOR_PRIMARIO_OSCURO
 from nucleo.util import recortar
 
 # Alto reservado para la barra inferior: el contenido tiene que poder
 # terminar sin quedar tapado por ella.
 _ALTO_BARRA = 62
-# Alto que ocupa el badge de Streamlit Cloud abajo a la derecha.
-_ALTO_BADGE = 46
+# Ancho que se le deja al distintivo de Streamlit Cloud en la esquina
+# inferior derecha (lo pinta la plataforma por fuera de la app y no se
+# puede ocultar de forma confiable). Misma medida que en la demo Millca,
+# verificada en un viewport de iPhone.
+_RESERVA_BADGE = 118
 
 _CSS = f"""
 <style>
 /* ---- Estructura general ---- */
 .block-container {{
   padding-top: 2.6rem;
-  padding-bottom: calc({_ALTO_BARRA}px + {_ALTO_BADGE}px + env(safe-area-inset-bottom, 0px) + 1.2rem);
+  padding-bottom: calc({_ALTO_BARRA}px + env(safe-area-inset-bottom, 0px) + 1.2rem);
   max-width: 760px;
 }}
 #MainMenu, footer, header [data-testid="stStatusWidget"] {{ visibility: hidden; }}
@@ -48,7 +55,7 @@ h1, h2, h3 {{ letter-spacing: -0.015em; }}
 .sbc-tope .t {{ font-size: 1.3rem; font-weight: 600; line-height: 1.25; }}
 .sbc-tope .s {{ font-size: 0.87rem; opacity: 0.65; margin-top: 0.1rem; }}
 
-/* ---- Acceso de configuracion, arriba a la derecha ---- */
+/* ---- Acceso de configuracion, arriba a la IZQUIERDA ---- */
 /* Va a la misma altura que la cabecera de Streamlit, que mide 2.875rem
    y queda por ENCIMA en el apilado: con z-index más alto que ella
    (999990) el enlace se ve; con menos, la cabecera transparente lo tapa
@@ -56,7 +63,7 @@ h1, h2, h3 {{ letter-spacing: -0.015em; }}
 .st-key-acceso_tope {{
   position: fixed;
   top: calc(0.55rem + env(safe-area-inset-top, 0px));
-  right: 0.9rem;
+  left: 0.9rem;
   z-index: 999991;
   width: auto;
 }}
@@ -74,21 +81,25 @@ h1, h2, h3 {{ letter-spacing: -0.015em; }}
 .st-key-acceso_tope .stButton > button:hover {{ opacity: 1; }}
 
 /* ---- Barra inferior ---- */
+/* El distintivo "Hosted with Streamlit" lo pinta la PLATAFORMA, por fuera
+   de la app, en la esquina inferior derecha. La barra le cede esa esquina
+   en vez de pelearla: termina antes del borde y las tres secciones se
+   reparten el ancho que queda. width:auto es obligatorio: Streamlit le
+   pone width:100% a sus contenedores y, con left+right+width definidos,
+   el ancho gana y el right se ignora (pasó en la demo Millca). */
 .st-key-barra_inferior {{
   position: fixed;
-
-/* El badge "Hosted with Streamlit" lo pinta la PLATAFORMA (en un servidor
-   propio no existe) y sus clases cambian con cada versión, así que no se
-   oculta de forma confiable. En vez de pelear por el mismo rincón, la
-   barra se levanta y le deja su sitio debajo: el tercer botón vuelve a
-   quedar libre para el pulgar. */
-  left: 0; right: 0;
-  bottom: calc({_ALTO_BADGE}px + env(safe-area-inset-bottom, 0px));
+  left: 0; bottom: 0;
+  right: {_RESERVA_BADGE}px;
+  width: auto !important;
   z-index: 100;
   background: canvas;
-  border-top: 1px solid rgba(128,128,128,0.22);
-  padding: 0.3rem 0.3rem 0.3rem;
-  border-bottom: 1px solid rgba(128,128,128,0.22);
+  padding: 0.3rem 0.3rem calc(0.3rem + env(safe-area-inset-bottom, 0px));
+}}
+/* La línea de arriba cruza toda la pantalla aunque la barra pare antes. */
+.st-key-barra_inferior::before {{
+  content: ""; position: absolute; top: 0; left: 0; height: 1px;
+  width: 100vw; background: rgba(128,128,128,0.22);
 }}
 
 /* EL ARREGLO QUE IMPORTA: Streamlit apila las columnas una debajo de
@@ -131,6 +142,32 @@ h1, h2, h3 {{ letter-spacing: -0.015em; }}
   box-shadow: inset 0 2px 0 0 {COLOR_PRIMARIO};
   border-radius: 0 !important;
 }}
+/* En modo oscuro el azul institucional casi no se ve sobre el fondo
+   (contraste 2,18:1): la pestaña activa toma el mismo azul aclarado que
+   usa el tema oscuro. Streamlit sigue la preferencia del sistema (su menú
+   de tema está oculto), así que esta consulta coincide con su modo. */
+@media (prefers-color-scheme: dark) {{
+  .st-key-barra_inferior .stButton > button[kind="primary"] {{
+    color: {COLOR_PRIMARIO_OSCURO};
+    box-shadow: inset 0 2px 0 0 {COLOR_PRIMARIO_OSCURO};
+  }}
+}}
+
+/* ---- Filas que NO se apilan en el celular ----
+   Cualquier contenedor con clave "fila_…" mantiene sus columnas lado a
+   lado (Streamlit las apila en pantallas angostas). En la fila de los
+   selectores de la Biblia el libro ocupa tres partes y el capítulo una. */
+[class*="st-key-fila_"] [data-testid="stHorizontalBlock"] {{
+  flex-direction: row !important;
+  flex-wrap: nowrap !important;
+  gap: 0.5rem !important;
+}}
+[class*="st-key-fila_"] [data-testid="stColumn"] {{
+  flex: 1 1 0 !important;
+  width: auto !important;
+  min-width: 0 !important;
+}}
+.st-key-fila_bib_sel [data-testid="stColumn"]:first-child {{ flex: 3 1 0 !important; }}
 
 /* ---- Chat ---- */
 [data-testid="stChatMessage"] {{
@@ -173,10 +210,30 @@ h1, h2, h3 {{ letter-spacing: -0.015em; }}
   font-size: 0.85rem;
 }}
 .sbc-fuente span {{ opacity: 0.7; }}
-.stButton > button[kind="primary"] {{
+/* Botones principales SIEMPRE en el azul institucional oscuro, también en
+   modo oscuro: el tema los pintaría con el acento claro de ese modo y el
+   texto blanco encima quedaría con contraste 2,5:1 (con este, 8,7:1).
+   Streamlit usa tres tipos distintos: el botón normal, el de enviar un
+   formulario (el "Entrar" del acceso salía ROJO porque solo se cubría el
+   primero) y el de enlace.
+   SIN !important: con él, esta regla le ganaba a la de la barra inferior
+   y la pestaña activa quedaba como un bloque azul con el texto azul
+   encima, invisible. La especificidad de estos selectores ya basta para
+   ganarle al estilo de Streamlit. */
+.stButton > button[kind="primary"],
+button[kind="primaryFormSubmit"],
+a[data-testid="stBaseLinkButton-primary"] {{
   background-color: {COLOR_PRIMARIO};
   border-color: {COLOR_PRIMARIO};
   border-radius: 12px;
+}}
+/* Etiquetas de lo elegido en un selector múltiple: SIEMPRE el azul
+   oscuro. El tema las pintaría con el acento de cada modo, y en modo
+   oscuro ese acento es claro: el texto blanco encima quedaría con
+   contraste 2,5:1. */
+[data-baseweb="tag"],
+[data-testid="stMultiSelectTagsContainer"] [data-tag] {{
+  background-color: {COLOR_PRIMARIO} !important;
 }}
 </style>
 """
@@ -196,7 +253,7 @@ def tope(titulo: str, subtitulo: str = "") -> None:
 
 def acceso_tope(pagina_admin, hay_sesion: bool, en_admin: bool) -> None:
     """
-    El acceso de configuracion, arriba a la derecha y discreto.
+    El acceso de configuracion, arriba a la izquierda y discreto.
 
     Esta siempre visible porque es la puerta, no el permiso: esconderlo
     obligaria a saberse una direccion de memoria. Pero no compite con las
@@ -225,6 +282,62 @@ def barra_inferior(paginas: list, actual_url: str) -> None:
                           type="primary" if activa else "secondary",
                           use_container_width=True) and not activa:
                 st.switch_page(pagina)
+
+
+# Lo que se deja libre arriba al llevar la pantalla a un punto: la
+# cabecera transparente de Streamlit (2.875rem = 46 px) y el botón Entrar
+# están fijos ahí y taparían lo que quede justo en el borde.
+_MARGEN_SUPERIOR = 56
+
+
+def llevar_a(ancla_css: str, marca: str) -> None:
+    """
+    Desplaza la pantalla hasta el elemento `ancla_css`, o arriba del todo
+    si no lo encuentra (nunca deja a nadie abajo).
+
+    POR QUÉ: los botones para pasar de capítulo están al FINAL del texto.
+    Al tocarlos, Streamlit redibuja pero la pantalla conserva el
+    desplazamiento: el capítulo nuevo se abría mostrando su final y había
+    que subir a mano en cada capítulo. Streamlit no trae una orden para
+    desplazar la pantalla, así que se hace con un script mínimo.
+
+    CÓMO:
+    · Se llama SOLO cuando el capítulo cambió (lo decide cada página). En
+      el primer ingreso o al escribir en el buscador no se mueve nada.
+    · st.html con JavaScript corre el script en la página, y el navegador
+      lo vuelve a correr cada vez que su contenido cambia. `marca`
+      (capítulo + contador) lo hace distinto en cada cambio.
+    · Lo que se desplaza NO es la página sino el contenedor principal de
+      Streamlit, y su etiqueta cambia entre versiones (<section> en la
+      1.57, <main> en la 1.66). Por eso el script no lo nombra: sube desde
+      el ancla hasta el primer contenedor que tenga barra de
+      desplazamiento. Si no encuentra el ancla, lleva arriba del todo.
+    · Va al FINAL de la página: así el ancla, que está más arriba, ya
+      existe cuando el script corre.
+    """
+    script = (
+        "<script>(function () {"
+        f"  var marca = {json.dumps(marca)};"   # hace único el bloque
+        f"  var ancla = document.querySelector({json.dumps(ancla_css)});"
+        "  function contenedor(el) {"
+        "    for (var e = el && el.parentElement; e; e = e.parentElement) {"
+        "      var oy = getComputedStyle(e).overflowY;"
+        "      if ((oy === 'auto' || oy === 'scroll') && e.scrollHeight > e.clientHeight + 1) return e;"
+        "    }"
+        "    return document.querySelector('[data-testid=\"stMain\"]')"
+        "        || document.scrollingElement || document.documentElement;"
+        "  }"
+        "  requestAnimationFrame(function () {"
+        "    var cont = contenedor(ancla);"
+        "    var pagina = cont === document.scrollingElement || cont === document.documentElement;"
+        "    var arriba = pagina ? 0 : cont.getBoundingClientRect().top;"
+        "    var destino = ancla ? cont.scrollTop + ancla.getBoundingClientRect().top"
+        f"                 - arriba - {_MARGEN_SUPERIOR} : 0;"
+        "    cont.scrollTop = Math.max(0, destino);"
+        "  });"
+        "})();</script>"
+    )
+    st.html(script, unsafe_allow_javascript=True)
 
 
 def chips(etiquetas: list[str], limite: int = 6) -> None:

@@ -164,6 +164,14 @@ def _css(p: dict) -> str:
    [data-baseweb="select"], no hijo: por eso la regla de arriba sola no
    la alcanzaba. Se descubrió preguntándole al navegador, no leyendo. */
 [data-testid="stSelectbox"] [data-baseweb="select"] svg {{ fill: {p["texto_suave"]} !important; }}
+/* El borde de un campo AL TOCARLO toma el color de acento del tema, que
+   es el azul de la SBC (config.toml). En la demo va el rosa de Millca. */
+[data-testid="stTextAreaRootElement"]:focus-within,
+[data-testid="stTextInputRootElement"]:focus-within,
+[data-testid="stNumberInputContainer"]:focus-within,
+[data-testid="stSelectbox"] [data-baseweb="select"] > div:focus-within {{
+  border-color: {p["rosa"]} !important;
+}}
 [data-testid="stExpander"] details {{ background: {p["campo"]} !important;
   border-color: {p["borde"]} !important; }}
 [data-baseweb="popover"] li, [data-baseweb="menu"] {{ background: {p["campo"]} !important; color: {p["texto"]} !important; }}
@@ -232,10 +240,12 @@ a[data-testid="stBaseLinkButton-primary"] {{ background: {p["rosa"]}; border-col
 
 /* Selector de tema: dos pastillas LADO A LADO (Streamlit las apilaría) */
 .st-key-ml_tema [data-testid="stHorizontalBlock"],
-.st-key-ml_letra [data-testid="stHorizontalBlock"] {{
+.st-key-ml_letra [data-testid="stHorizontalBlock"],
+.st-key-ml_nav [data-testid="stHorizontalBlock"] {{
   flex-direction: row !important; flex-wrap: nowrap !important; gap: 0.6rem !important;
 }}
-.st-key-ml_tema [data-testid="stColumn"], .st-key-ml_letra [data-testid="stColumn"] {{
+.st-key-ml_tema [data-testid="stColumn"], .st-key-ml_letra [data-testid="stColumn"],
+.st-key-ml_nav [data-testid="stColumn"] {{
   flex: 1 1 0 !important; width: auto !important; min-width: 0 !important; }}
 .st-key-ml_letra {{ margin: 0.2rem 0 0.9rem; }}
 .ml-tema-et {{ font-size: 0.78rem; letter-spacing: 0.1em; text-transform: uppercase;

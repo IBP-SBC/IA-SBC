@@ -6,7 +6,8 @@
 # NOTA: no usamos el SDK 'anthropic'. Se habla con la API por requests
 # (ver nucleo/claude.py y el porqué que está documentado ahí).
 
-streamlit==1.57.0
+streamlit==1.57.0         # la piel se verificó en un navegador con esta versión;
+                          # en la 1.66 cambian selectores que usa la demo Millca
 starlette==1.3.1          # NO subir a 1.4.0: rompe Streamlit en la nube
 pandas==3.0.3
 numpy==2.4.6

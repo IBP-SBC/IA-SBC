@@ -39,7 +39,7 @@ disponibles = (indice.documentos_del_ambito(AMBITO_PUBLICO)
 if not disponibles:
     st.info(
         "Todavía no hay material cargado para responder.\n\n"
-        + ("Entrá a **Administrar → Documentos** y subí los primeros, "
+        + ("Entrá a **Configuración → Documentos** y subí los primeros, "
            "marcándolos como públicos." if es_admin() else
            "Estamos preparando el contenido. Mientras tanto, podés leer la "
            "Biblia o armar tu pedido personalizado en los botones de abajo.")

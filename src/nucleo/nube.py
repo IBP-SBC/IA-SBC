@@ -27,6 +27,7 @@ CONFIGURACIÓN (Streamlit → Settings → Secrets):
 from __future__ import annotations
 
 import json
+import time
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -93,6 +94,31 @@ def _headers(cfg: dict, extra: dict | None = None) -> dict:
 # OPERACIONES BÁSICAS (devuelven bool/valor, nunca rompen la app)
 # ════════════════════════════════════════════════════════════════════
 
+# ── Memoria de lo que NO existe en el bucket ─────────────────────────
+# Varios lectores preguntan por archivos que todavía no existen (el texto
+# bíblico oficial, la lista de precios) y lo hacen varias veces por cada
+# toque en pantalla: cada pregunta era una consulta a Supabase. Se recuerda
+# por un minuto que un objeto no existe; subirlo borra el recuerdo al
+# instante. Los errores de red NO se recuerdan: pueden ser pasajeros, y
+# dar por inexistente un archivo que sí existe es justo el patrón que
+# borró histórico en sbc_ventas.
+TTL_NO_EXISTE = 60          # segundos
+_NO_EXISTE: dict[str, float] = {}
+
+
+def _recordar_inexistente(clave: str) -> None:
+    _NO_EXISTE[clave] = time.monotonic()
+
+
+def _olvidar(clave: str) -> None:
+    _NO_EXISTE.pop(clave, None)
+
+
+def _se_sabe_inexistente(clave: str) -> bool:
+    marca = _NO_EXISTE.get(clave)
+    return marca is not None and (time.monotonic() - marca) < TTL_NO_EXISTE
+
+
 def subir_bytes(clave: str, contenido: bytes) -> bool:
     """Sube contenido al bucket (crea o reemplaza). True si quedó."""
     cfg = _config()
@@ -108,7 +134,10 @@ def subir_bytes(clave: str, contenido: bytes) -> bool:
             }),
             timeout=TIMEOUT_NUBE,
         )
-        return r.status_code in (200, 201)
+        ok = r.status_code in (200, 201)
+        if ok:
+            _olvidar(clave)
+        return ok
     except Exception:
         return False
 
@@ -127,12 +156,17 @@ def subir_archivo(ruta_local: str | Path, clave: str) -> bool:
 def bajar_bytes(clave: str) -> bytes | None:
     """Descarga un objeto. None si no existe o si no hay nube."""
     cfg = _config()
-    if cfg is None:
+    if cfg is None or _se_sabe_inexistente(clave):
         return None
     try:
         url = f"{cfg['url']}/storage/v1/object/{cfg['bucket']}/{clave}"
         r = requests.get(url, headers=_headers(cfg), timeout=TIMEOUT_NUBE)
-        return r.content if r.status_code == 200 else None
+        if r.status_code == 200:
+            _olvidar(clave)
+            return r.content
+        if r.status_code in (400, 404):    # así responde Supabase "no existe"
+            _recordar_inexistente(clave)
+        return None
     except Exception:
         return None
 
@@ -187,7 +221,10 @@ def eliminar(clave: str) -> bool:
     try:
         url = f"{cfg['url']}/storage/v1/object/{cfg['bucket']}/{clave}"
         r = requests.delete(url, headers=_headers(cfg), timeout=TIMEOUT_NUBE)
-        return r.status_code in (200, 204)
+        ok = r.status_code in (200, 204)
+        if ok:
+            _recordar_inexistente(clave)
+        return ok
     except Exception:
         return False
 

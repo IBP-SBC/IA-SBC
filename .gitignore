@@ -5,7 +5,8 @@ data/documentos/*
 data/estado/*
 !data/documentos/.gitkeep
 !data/estado/.gitkeep
-# data/semilla SÍ viaja: es texto de dominio público, no datos de la SBC.
+# data/semilla SÍ viaja: el Nuevo Testamento de dominio público y la lista
+# de precios SIMULADA para probar el cotizador. Nada de la SBC va ahí.
 
 # Secretos: la llave de la API y la de Supabase van en los Secrets de
 # Streamlit Cloud, jamás en un archivo versionado.

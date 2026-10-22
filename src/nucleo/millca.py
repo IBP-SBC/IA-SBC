@@ -9,16 +9,13 @@ POR QUÉ ES UN MÓDULO PROPIO Y NO REUTILIZA biblia.py
 ----------------------------------------------------
 biblia.py lee el corpus de la SBC (RVR/TLA, cargado por el admin y
 guardado en Supabase). La demo necesita un texto que exista SIN que nadie
-cargue nada y SIN pregunta de derechos: la Reina-Valera 1909, de dominio
-público, que viaja en el repo en data/semilla/juan_rv1909.csv. Mezclar los
-dos corpus habría obligado a que la demo dependiera de la nube de la SBC
-y a que un texto de dominio público apareciera como "versión de la casa".
+cargue nada y SIN pregunta de derechos: el evangelio de Juan de la
+Reina-Valera 1909, de dominio público, que se toma del Nuevo Testamento
+de ejemplo que viaja en el repo (nucleo/semilla.py, donde está toda la
+procedencia). Nunca lee el corpus de la SBC ni su nube.
 
-FUENTE DEL TEXTO
-  Reina-Valera 1909 · dominio público · archivo spa-rv1909.usfx.xml del
-  repositorio open-bibles (github.com/seven1m/open-bibles). Se extrajo
-  SOLO el evangelio de Juan: 879 versículos en 21 capítulos, la cuenta
-  canónica. La ortografía antigua ("á", "fué") es la original de 1909.
+Juan: 879 versículos en 21 capítulos, la cuenta canónica. La ortografía
+antigua ("á", "fué") es la original de 1909.
 
 Los videos y los textos del perfil se configuran en Configuración →
 Millca y se guardan en el bucket, para poder cambiarlos desde el celular
@@ -33,13 +30,10 @@ from urllib.parse import parse_qs, urlparse
 
 import pandas as pd
 
-from nucleo import nube
-from nucleo.config import ESTADO_DIR, ROOT
+from nucleo import nube, semilla
+from nucleo.config import ESTADO_DIR
 
-# La semilla se ancla a la RAÍZ del repo, no a data/: es texto de dominio
-# público que forma parte del código (como un geojson), no un dato de la
-# SBC que viva en Supabase. Por eso también está fuera del .gitignore.
-RUTA_SEMILLA = ROOT / "data" / "semilla" / "juan_rv1909.csv"
+LIBRO_DEMO = "Juan"
 ARCHIVO_PARAMS = "millca.json"
 
 COLUMNAS = ["version", "libro", "orden", "capitulo", "versiculo", "texto"]
@@ -73,16 +67,9 @@ PARAMS_DEFECTO = {
 # ════════════════════════════════════════════════════════════════════
 
 def leer_corpus() -> pd.DataFrame:
-    """El evangelio de Juan RV1909. Vacío (y lo dice) si falta la semilla."""
-    if not RUTA_SEMILLA.exists():
-        return pd.DataFrame(columns=COLUMNAS)
-    try:
-        df = pd.read_csv(RUTA_SEMILLA, encoding="utf-8")
-    except Exception:
-        return pd.DataFrame(columns=COLUMNAS)
-    if any(c not in df.columns for c in COLUMNAS):
-        return pd.DataFrame(columns=COLUMNAS)
-    return df
+    """El evangelio de Juan RV1909. Vacío (y la pantalla lo dice) si falta."""
+    df = semilla.libro(LIBRO_DEMO)
+    return df if not df.empty else pd.DataFrame(columns=COLUMNAS)
 
 
 def capitulos() -> list[int]:
