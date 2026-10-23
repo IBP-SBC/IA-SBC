@@ -24,7 +24,7 @@ from pathlib import Path
 # ── Identidad ────────────────────────────────────────────────────────
 APP_NOMBRE = "IA · SBC"
 APP_SUBTITULO = "Sociedad Bíblica Colombiana"
-APP_VERSION = "2.3.0"
+APP_VERSION = "2.3.1"
 
 # ── Rutas locales ────────────────────────────────────────────────────
 # parents[2] = raíz del repo (src/nucleo/config.py → src/ → raíz)
@@ -95,15 +95,13 @@ TAM_MAX_MB = 50
 # colaborador: conversa y ve las fuentes. No carga ni borra.
 ROLES = ("admin", "colaborador")
 
-# Usuario de emergencia SOLO para el primer arranque local, en un equipo
-# SIN ningún Secret. En la nube mandan los Secrets (el administrador es
-# director.promocion@sbcol.org y su clave vive SOLO allá). Desde la v2.3
-# esta tabla se ignora en cuanto existe CUALQUIER Secret, aunque la
-# sección [usuarios] esté mal escrita: antes, un error de sintaxis en los
-# Secrets dejaba abierta esta puerta de fábrica.
-USUARIOS_DEFECTO = {
-    "admin": {"clave": "cambiar-en-secrets", "rol": "admin"},
-}
+# Los administradores viven SOLO en los Secrets (en la nube, el de la SBC
+# es director.promocion@sbcol.org). NO hay usuario de fábrica desde la
+# v2.3.1: existió para el primer arranque en un computador y abrió dos
+# huecos (en la nube sin [usuarios], y con Secrets ilegibles), con una
+# clave escrita en este archivo, que es público en GitHub. Para usar la
+# configuración en un computador: .streamlit/secrets.toml.ejemplo →
+# .streamlit/secrets.toml, con una clave propia.
 
 # ── Paleta SBC (la misma de sbc_ventas, para que se vean hermanas) ───
 COLOR_PRIMARIO = "#1f4e79"

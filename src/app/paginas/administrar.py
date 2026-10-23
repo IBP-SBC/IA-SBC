@@ -197,14 +197,17 @@ with t_precios:
     encabezado_carga(
         titulo="Lista de precios",
         estado="",
-        resumen=(f"**Lista de PRUEBA activa** ({len(precios)} combinaciones). "
-                 "La pantalla pública avisa que los precios son simulados."
+        resumen=(f"**Se está usando la lista de PRUEBA** ({len(precios)} "
+                 "combinaciones, precios simulados) porque todavía no hay una "
+                 "lista oficial. La pantalla pública lo avisa arriba y la "
+                 "solicitud que se envía lo dice en la primera línea. Al cargar "
+                 "la oficial, la de prueba deja de usarse sola."
                  if simulada else
                  f"**Lista oficial**: {len(precios)} combinaciones"
                  if not precios.empty else
                  "**Sin lista de precios.** El cotizador funciona igual, pero "
                  "sin calcular el valor: envía la solicitud a comercial."),
-        ultima=params.get("ultima_carga"),
+        ultima=params.get("ultima_carga") if not simulada else None,
         ayuda=(
             "- Una fila por combinación cotizable. Las escalas por volumen se "
             "resuelven con `desde_cantidad`: se aplica el precio de la fila "
@@ -221,22 +224,6 @@ with t_precios:
             "archivo nuevo no trae la hoja `adicionales`, los anteriores se "
             "borran."),
     )
-    # La lista de prueba se ofrece solo si no hay una oficial: cargarla
-    # encima de la oficial la reemplazaría.
-    if precios.empty or simulada:
-        c1, c2 = st.columns(2)
-        if c1.button("Cargar lista de prueba", key="_adm_prueba_cargar",
-                     use_container_width=True, disabled=simulada,
-                     help="Precios SIMULADOS para probar el cotizador."):
-            ok, msg = cotizador.cargar_lista_de_prueba(usuario_actual())
-            (st.success if ok else st.error)(msg)
-            if ok:
-                st.rerun()
-        if c2.button("Quitar la lista de prueba", key="_adm_prueba_quitar",
-                     use_container_width=True, disabled=not simulada):
-            st.info(cotizador.borrar_lista())
-            st.rerun()
-
     st.download_button("Descargar la plantilla", cotizador.plantilla_csv(),
                        file_name="plantilla_precios_sbc.csv", mime="text/csv",
                        key="_adm_plantilla")

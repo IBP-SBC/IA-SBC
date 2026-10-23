@@ -216,12 +216,17 @@ from nucleo import cotizador  # noqa: E402
 
 cotizador.RUTA_PRECIOS = config.ESTADO_DIR / "precios.parquet"
 cotizador.RUTA_ADICIONALES = config.ESTADO_DIR / "precios_adicionales.parquet"
+# Desde la v2.3.1, sin lista oficial rige la simulada (se prueba en 5-ter).
+# Para probar "sin NINGUNA lista" se aparta también la simulada.
+_RUTA_PRUEBA_REAL = cotizador.RUTA_LISTA_PRUEBA
+cotizador.RUTA_LISTA_PRUEBA = config.ESTADO_DIR / "no_existe.xlsx"
 
 _sin = cotizador.cotizar("Biblia", 1000, {})
-check("Sin lista de precios NO se inventa un valor",
+check("Sin ninguna lista (ni oficial ni simulada) NO se inventa un valor",
       _sin["ok"] is False and _sin["motivo"] == "sin_tabla"
       and "$" not in _sin["mensaje"],
       "un 'precio de referencia' sacado de la nada termina en un reclamo")
+cotizador.RUTA_LISTA_PRUEBA = _RUTA_PRUEBA_REAL
 
 _tabla = _pd.DataFrame([
     {"familia": "Biblia", "referencia": "Agenda 13x21", "version": "RVR",
@@ -331,9 +336,21 @@ check("Una lista nueva SIN hoja de agregados borra los anteriores",
       _ok_s and cotizador.leer_adicionales().empty,
       "los agregados de una lista de prueba no pueden sobrevivir a la oficial")
 
-_okp, _mp = cotizador.cargar_lista_de_prueba("aud")
-check("La lista de prueba carga por el MISMO camino que una real", _okp, _mp)
-check("La lista de prueba queda marcada como simulada", cotizador.es_simulada())
+# ── La lista simulada rige SOLA mientras no haya oficial (v2.3.1) ────
+# Hasta la v2.3.0 había que activarla como administrador; cuando el acceso
+# falló, el cotizador quedó sin un solo valor para probar.
+for _r in (cotizador.RUTA_PRECIOS, cotizador.RUTA_ADICIONALES):
+    _r.unlink(missing_ok=True)                        # sin lista oficial
+_p_sim, _a_sim, _err_sim = cotizador._interpretar(_RUTA_PRUEBA_REAL.read_bytes(),
+                                                  _RUTA_PRUEBA_REAL.name)
+check("La lista simulada pasa por la MISMA validación que una lista real",
+      _p_sim is not None, _err_sim)
+check("Sin lista oficial rige la simulada, sin entrar a la configuración",
+      cotizador.hay_precios() and _p_sim is not None
+      and len(cotizador.leer_precios()) == len(_p_sim)
+      and len(cotizador.leer_adicionales()) == len(_a_sim),
+      "el cotizador no puede depender de que alguien entre como administrador")
+check("…y se anuncia como simulada (pantalla y solicitud lo dicen)", cotizador.es_simulada())
 _c = cotizador.cotizar
 _b800 = _c("Biblia", 800, {"version": "RVR"})
 check("Prueba · 800 Biblias = 800 × $42.000 = $33.600.000",
@@ -358,9 +375,23 @@ check("Prueba · 'Producto propio' se cotiza a pedido, sin precio inventado",
 check("La solicitud enviada con la lista de prueba lo dice en la primera línea",
       cotizador.texto_solicitud(_b800, {"familia": "Biblia"}, {}, simulada=True)
       .startswith("*** PRUEBA"))
-cotizador.borrar_lista()
-check("Quitar la lista de prueba deja el cotizador sin precios y sin marca",
-      not cotizador.hay_precios() and not cotizador.es_simulada())
+_lp = cotizador.leer_precios()
+_lp["precio_unitario"] = 1
+check("Modificar lo que devuelve la lista no cambia la lista de nadie (se entregan copias)",
+      _c("Biblia", 800, {"version": "RVR"})["total"] == 33_600_000,
+      "la lista simulada se memoriza: entregar el objeto memorizado lo dejaría expuesto")
+_ok_of, _m_of = cotizador.cargar_tabla(_xlsx(_base), "oficial.xlsx", "aud")
+check("Al cargar la oficial, la simulada deja de usarse y sus agregados no se cuelan",
+      _ok_of and not cotizador.es_simulada()
+      and len(cotizador.leer_precios()) == len(_base)
+      and cotizador.leer_adicionales().empty, _m_of)
+cotizador.guardar_parametros({"simulada": True})
+check("Una lista de prueba guardada como archivo por la v2.3.0 se sigue anunciando",
+      cotizador.es_simulada())
+cotizador.guardar_parametros({"simulada": False})
+check("Ya no existen los botones para cargar o quitar la lista de prueba",
+      not hasattr(cotizador, "cargar_lista_de_prueba") and not hasattr(cotizador, "borrar_lista"),
+      "la simulada rige sola mientras no haya oficial: los botones sobraban")
 
 print("\n═══ 6. CONTEXTO QUE VIAJA AL MODELO ═══")
 system = modelo.construir_system(res)
@@ -746,7 +777,8 @@ check("El ejemplo de Secrets produce [usuarios] con el administrador ADENTRO",
 # tuviera escrita, la estaría publicando): busca cualquier línea de estilo
 # TOML  clave = "…"  cuyo valor no sea uno de los marcadores de ejemplo.
 _MARCADORES = {"PEGAR_AQUI_LA_CLAVE", "TU_CLAVE", "CAMBIAR", "CAMBIAR_POR_UNA_CLAVE_LARGA",
-               "LA_MISMA_CLAVE_DE_SIEMPRE", "cambiar-en-secrets", "...", ""}
+               "LA_MISMA_CLAVE_DE_SIEMPRE", "cambiar-en-secrets", "...", "",
+               "clave-de-prueba"}          # la de las pruebas: nunca es una clave real
 _con_clave = []
 for _f in RAIZ.rglob("*"):
     if not _f.is_file() or ".git" in _f.parts or _f.name == "auditoria_iasbc.py" or _f.suffix not in (
@@ -762,14 +794,80 @@ check("No hay un secrets.toml real dentro del repositorio",
       not (RAIZ / ".streamlit/secrets.toml").exists())
 _estado_src = (RAIZ / "src/app/estado.py").read_text(encoding="utf-8")
 check("Solo entra quien tenga rol 'admin' (antes entraba cualquier usuario)",
-      'usuarios[match].get("rol") == ROL_ADMIN' in _estado_src)
-check("El usuario de fábrica NO vale en la nube (solo sin ningún secreto)",
-      "return {} if _secretos_existen() else dict(USUARIOS_DEFECTO)" in _estado_src,
-      "hasta la v2.2 'admin / cambiar-en-secrets' abría la configuración en la nube")
+      'd.get("rol") == ROL_ADMIN' in _estado_src and "admins = _administradores()" in _estado_src)
+_src_todo = "\n".join(p.read_text(encoding="utf-8") for p in (RAIZ / "src").rglob("*.py"))
+check("No existe usuario de fábrica: sin Secrets legibles nadie entra",
+      "USUARIOS_DEFECTO" not in _src_todo and "cambiar-en-secrets" not in _src_todo,
+      "abrió dos huecos: en la nube sin [usuarios] (v2.2) y con Secrets ilegibles (v2.3.0), "
+      "con una clave escrita en el código, que es público en GitHub")
 check("La clave se compara en tiempo constante y un fallo hace esperar",
       "hmac.compare_digest" in _estado_src and "time.sleep(PAUSA_INTENTO_FALLIDO)" in _estado_src)
 check("El formulario no muestra el nombre del administrador como ejemplo",
       "PEÑA JOSE ALBERTO" not in _estado_src.split("def solo_admin")[1])
+
+# ── Secrets ilegibles, ausentes y correctos, con el lector REAL de Streamlit
+# (v2.3.1). La auditoría verificaba el ejemplo con tomllib, pero Streamlit
+# lee los Secrets con otro lector (el paquete 'toml'); y la app confundía
+# "Secrets ilegibles" con "no hay Secrets": nadie podía entrar, la pantalla
+# solo decía "incorrecto" y el usuario de fábrica quedaba habilitado.
+import streamlit as _st  # noqa: E402
+from streamlit import config as _stc  # noqa: E402
+from streamlit.runtime.secrets import Secrets as _Secrets  # noqa: E402
+import app.estado as _estado  # noqa: E402
+
+def _con_secrets(texto: str | None) -> None:
+    """Pone un st.secrets nuevo que lee `texto` de un archivo temporal
+    (None = que no exista ningún archivo de Secrets)."""
+    ruta = Path(tempfile.mkdtemp(prefix="secrets_aud_")) / "secrets.toml"
+    if texto is not None:
+        ruta.write_text(texto, encoding="utf-8")
+    _stc.set_option("secrets.files", [str(ruta)])
+    _st.secrets = _Secrets()
+
+
+_guardado_secrets, _guardadas_rutas = _st.secrets, _stc.get_option("secrets.files")
+_BLOQUE = ('[usuarios."director.promocion@sbcol.org"]\n'
+           'clave = "clave-de-prueba"\nrol   = "admin"\n')
+try:
+    # El ejemplo, leído por el lector REAL de esta versión de Streamlit (en
+    # la 1.57 es el paquete 'toml'; en la 1.66, otro): tiene que dar
+    # exactamente lo mismo que el lector estándar de Python.
+    _txt_ej = (RAIZ / ".streamlit/secrets.toml.ejemplo").read_text(encoding="utf-8")
+    _con_secrets(_txt_ej)
+    check("El ejemplo de Secrets se lee IGUAL con el lector que usa Streamlit",
+          _st.secrets.to_dict() == _toml.loads(_txt_ej),
+          "la sintaxis tiene que funcionar con el lector de Streamlit, no solo con el de Python")
+    _con_secrets(_BLOQUE.replace('"director.promocion@sbcol.org"',
+                                 "“director.promocion@sbcol.org”"))
+    _d = _estado.estado_secrets()
+    check("Secrets con comillas curvas (teclado del iPad): se detectan como ilegibles y con su línea",
+          _d.get("estado") == "ilegibles" and _d.get("linea") == 1, str(_d))
+    check("…y nadie entra: ni el administrador ni un usuario de fábrica",
+          _estado._administradores() == {})
+    check("El aviso de Secrets ilegibles no arrastra el texto del error (puede citar la clave)",
+          set(_d) <= {"estado", "linea"})
+    _con_secrets(_BLOQUE + "\n" + _BLOQUE)
+    check("Un bloque pegado dos veces también se detecta como ilegible",
+          _estado.estado_secrets().get("estado") == "ilegibles")
+    _con_secrets(None)
+    check("Sin archivo de Secrets se dice que no hay, sin confundirlo con un error",
+          _estado.estado_secrets().get("estado") == "sin_secrets"
+          and _estado._administradores() == {})
+    _con_secrets(_BLOQUE)
+    check("Con el bloque correcto, Streamlit ve al administrador con el correo entero",
+          list(_estado._administradores()) == ["director.promocion@sbcol.org"]
+          and _estado.estado_secrets().get("estado") == "ok")
+finally:
+    _st.secrets = _guardado_secrets
+    _stc.set_option("secrets.files", _guardadas_rutas)
+
+_fc = _estado._forma_de_comparar
+check("El correo se reconoce aunque el celular le ponga mayúscula, tilde o espacio",
+      _fc(" Director.Promoción@sbcol.org ") == _fc("director.promocion@sbcol.org"),
+      "el corrector del iPhone escribe 'promoción' y pone mayúscula inicial")
+check("Esa tolerancia no junta dos usuarios distintos",
+      _fc("director.promocion@sbcol.org") != _fc("director.promocion2@sbcol.org")
+      and _fc("ana@sbcol.org") != _fc("ana@sbcol.com"))
 _bloque_acc = _css[_css.index(".st-key-acceso_tope {"):_css.index(".st-key-acceso_tope .stButton")]
 check("El botón Entrar está en la esquina superior IZQUIERDA",
       "left: 0.9rem;" in _bloque_acc and "right:" not in _bloque_acc)

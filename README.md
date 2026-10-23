@@ -81,11 +81,24 @@ volver a romperse, se agrega un check a `auditoria_iasbc.py`.
 | **Guarda anti-pisado** del registro | El disco de Streamlit Cloud es efímero. En `sbc_ventas` ese patrón borró histórico tres veces. |
 | Extensión ≠ contenido se **rechaza**, no se adivina | Un `.pdf` que por dentro es un Word se lee mal y nadie sabría por qué. Mejor decir qué es y cómo renombrarlo. |
 | El tema define **solo el acento, uno por modo** (`[theme.light]` y `[theme.dark]`), nunca `[theme]` a secas | `[theme]` fuerza el modo claro para todos. Las dos secciones por modo respetan la preferencia del celular y quitan el rojo de fábrica de Streamlit de todos los campos (verificado en un navegador, en claro y en oscuro). |
+| **Sin usuario de fábrica** | Abrió dos huecos (v2.2 y v2.3.0) con una clave escrita en un código que es público. Sin Secrets legibles nadie entra, y la pantalla de acceso dice por qué y en qué línea. |
 | **Streamlit fijo en 1.57.0** | La piel (CSS) se verificó en un navegador con esa versión. En la 1.66 cambian los selectores del selectbox y de las pestañas que usa la demo Millca: subir de versión exige revisarla primero. |
 
 ---
 
 ## Versiones
+
+- **2.3.1** — Acceso: la app confundía **Secrets ilegibles** (comillas
+  curvas al pegarlos desde el iPad, un bloque repetido) con "no hay
+  Secrets": nadie podía entrar, la pantalla solo decía "incorrecto" y el
+  usuario de fábrica quedaba habilitado, con su clave escrita en el código
+  público. Ahora **no existe usuario de fábrica**; la pantalla de acceso
+  dice si los Secrets no se pueden leer y cerca de qué línea, y muestra la
+  versión y cuántos administradores leyó. El correo se compara sin tildes
+  (el corrector del iPhone escribe "promoción"). Cotizador: la **lista
+  simulada rige sola** mientras no haya lista oficial, anunciada como
+  prueba (antes había que activarla como administrador). Colab: el commit
+  lleva la versión real (todos decían "v1.1.0").
 
 - **2.3.0** — Acceso: el administrador es `director.promocion@sbcol.org`
   (la clave vive solo en los Secrets). Se corrigieron tres huecos: la

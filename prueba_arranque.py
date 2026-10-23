@@ -21,6 +21,8 @@ sys.path.insert(0, str(RAIZ / "src"))
 
 from streamlit.testing.v1 import AppTest  # noqa: E402
 
+from nucleo.config import APP_VERSION  # noqa: E402
+
 HOME = RAIZ / "src/app/Home.py"
 PAGINAS = RAIZ / "src/app/paginas"
 PUBLICAS = ("conversar.py", "biblia.py", "personalizar.py")
@@ -61,9 +63,10 @@ for archivo in PUBLICAS:
     check(f"{archivo} abre con clave", not at.exception, str(at.exception))
 
 at = _correr(PAGINAS / "administrar.py")
-check("Administrar pide clave en vez de mostrar la configuración",
-      not at.exception and len(at.text_input) >= 2,
-      str(at.exception) or "no apareció el formulario")
+check("Administrar sin Secrets lo dice, en vez de un formulario que nunca deja entrar",
+      not at.exception and len(at.text_input) == 0
+      and any("no tiene Secrets" in str(w.value) for w in at.warning),
+      str(at.exception) or f"avisos: {[str(w.value)[:60] for w in at.warning]}")
 
 at = _correr(PAGINAS / "administrar.py", True)
 check("Administrar abre con sesión iniciada", not at.exception,
@@ -176,12 +179,19 @@ SECRETOS_OK = {"usuarios": {"director.promocion@sbcol.org": {"clave": CLAVE_PRUE
                "supabase": {"url": "", "key": ""}}
 at = _login(SECRETOS_OK, " Director.Promocion@SBCOL.org ", CLAVE_PRUEBA)
 check("Entra el administrador (aunque el correo venga con mayúsculas y espacios)", _adentro(at))
+at = _login(SECRETOS_OK, "Director.Promoción@sbcol.org", CLAVE_PRUEBA)
+check("Entra aunque el corrector del celular le ponga tilde al correo ('promoción')",
+      _adentro(at))
 at = _login(SECRETOS_OK, "director.promocion@sbcol.org", "otra")
 check("Con clave equivocada NO entra y lo dice",
       not _adentro(at) and any("incorrectos" in str(e.value) for e in at.error))
+check("…y da las pistas: correo completo, mayúsculas, el 0 no es la O",
+      any("número 0" in str(c.value) for c in at.caption))
+check("La pantalla de acceso dice la versión y cuántos administradores leyó (sin nombres)",
+      any(f"IA-SBC {APP_VERSION} · administradores leídos de los Secrets: 1" in str(c.value)
+          for c in at.caption))
 at = _login(SECRETOS_OK, "admin", "cambiar-en-secrets")
-check("El usuario de fábrica NO entra cuando hay Secrets (era una puerta abierta)",
-      not _adentro(at))
+check("El viejo usuario de fábrica no existe: no entra", not _adentro(at))
 at = _login({"usuarios": {"diana": {"clave": "CAMBIAR", "rol": "colaborador"}},
              "supabase": {"url": ""}}, "diana", "CAMBIAR")
 check("Un usuario 'colaborador' NO entra a la configuración", not _adentro(at))
@@ -192,6 +202,33 @@ check("La sintaxis equivocada de la v2.0 también funciona (quien la pegó no qu
 at = _login({"supabase": {"url": ""}}, "x", "y")
 check("Sin administradores en los Secrets, la pantalla lo dice en vez de fallar mudo",
       any("No hay administradores" in str(w.value) for w in at.warning))
+
+# Secrets ILEGIBLES, con el lector real de Streamlit: lo que probablemente
+# pasó en la nube al pegarlos en el iPad (comillas curvas). Hasta la v2.3.0
+# la pantalla solo decía "incorrecto" y el usuario de fábrica quedaba
+# habilitado.
+import tempfile as _tf  # noqa: E402
+import streamlit as _st  # noqa: E402
+from streamlit import config as _stc  # noqa: E402
+from streamlit.runtime.secrets import Secrets as _Secrets  # noqa: E402
+
+_ruta_mala = Path(_tf.mkdtemp(prefix="secrets_malos_")) / "secrets.toml"
+_ruta_mala.write_text('[usuarios.\u201cdirector.promocion@sbcol.org\u201d]\n'
+                      'clave = "clave-de-prueba"\nrol = "admin"\n', encoding="utf-8")
+_guardado_secrets, _guardadas_rutas = _st.secrets, _stc.get_option("secrets.files")
+try:
+    _stc.set_option("secrets.files", [str(_ruta_mala)])
+    _st.secrets = _Secrets()
+    at = AppTest.from_file(str(PAGINAS / "administrar.py"), default_timeout=60)
+    at.run()
+    check("Con Secrets ilegibles la pantalla lo dice, marca la línea y no muestra un formulario inútil",
+          not at.exception and len(at.text_input) == 0
+          and any("no puede leer sus Secrets" in str(e.value) and "línea 1" in str(e.value)
+                  for e in at.error),
+          str(at.exception) or f"errores: {[str(e.value)[:80] for e in at.error]}")
+finally:
+    _st.secrets = _guardado_secrets
+    _stc.set_option("secrets.files", _guardadas_rutas)
 
 print("\n═══ COTIZADOR CON LA LISTA DE PRUEBA ═══")
 # Se trabaja en una carpeta temporal: la prueba NO puede dejar archivos en
@@ -205,9 +242,10 @@ cotizador.ESTADO_DIR = _tmp
 cotizador.RUTA_PRECIOS = _tmp / "precios.parquet"
 cotizador.RUTA_ADICIONALES = _tmp / "precios_adicionales.parquet"
 try:
-    ok, msg = cotizador.cargar_lista_de_prueba("prueba")
+    # Sin lista oficial (carpeta vacía) y SIN entrar a la configuración:
+    # la lista simulada rige sola desde la v2.3.1.
     at = _correr(PAGINAS / "personalizar.py")
-    check("Con la lista de prueba, la pantalla pública lo avisa arriba",
+    check("Sin entrar a la configuración, la pantalla pública ya cotiza y avisa que es prueba",
           any("Precios de prueba" in str(w.value) for w in at.warning))
     check("800 Biblias RVR: $ 33.600.000 en pantalla",
           any("$ 33.600.000" in str(m.value) for m in at.markdown))

@@ -13,6 +13,8 @@ EN LA NUBE (lo normal)
 No hay que instalar nada. Solo la Configuracion pide clave: boton
 "Entrar", arriba a la izquierda. El administrador y su clave se definen
 en los Secrets de Streamlit Cloud (ver .streamlit/secrets.toml.ejemplo).
+Al pegarlos, comillas RECTAS ("), cada bloque una sola vez. Si algo esta
+mal, la pantalla de acceso lo dice y marca la linea.
 La demo de Comunidad Millca vive en https://iasbc.streamlit.app/millca
 (solo la ve quien tenga el enlace).
 
@@ -20,6 +22,9 @@ EN ESTE COMPUTADOR (solo para probar o desarrollar)
   Mac:      doble clic en 1-Instalar.command y luego 2-Abrir.command
   Windows:  doble clic en 1-Instalar.bat y luego 2-Abrir.bat
   Requiere Python 3.11 o superior.
+  Para entrar a la Configuracion en el computador: copia el archivo
+  .streamlit/secrets.toml.ejemplo como .streamlit/secrets.toml y pone
+  una clave propia. No hay usuario de fabrica.
 
 SI MAC BLOQUEA LOS ARCHIVOS
   Abri la Terminal en esta carpeta y corre:  xattr -cr .

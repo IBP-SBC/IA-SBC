@@ -7,8 +7,15 @@ Evangelios, tratados y producto propio del cliente.
 LA REGLA QUE ORDENA TODO ESTE MÓDULO: **los precios no se inventan.**
 No hay una sola cifra escrita en este código. El precio sale de una tabla
 que carga el área comercial, con la misma lógica de las plantillas de
-sbc_ventas. Si la tabla no está cargada, la app lo dice y ofrece pedir
-cotización sin precio — nunca muestra un número "de referencia".
+sbc_ventas.
+
+MIENTRAS NO HAYA LISTA OFICIAL (v2.3.1) se usa la lista SIMULADA que viaja
+en data/semilla, igual que la Biblia muestra el Nuevo Testamento de
+ejemplo mientras no haya texto oficial. No es un número "de referencia"
+escondido: la pantalla lo anuncia arriba, el total lleva la marca de
+prueba y la solicitud que se envía lo dice en la primera línea. Hasta la
+v2.3.0 había que activarla desde la configuración, y cuando el acceso
+falló, el cotizador quedó sin un solo valor para probar.
 
 LO QUE LA COTIZACIÓN TIENE QUE DECIR SIEMPRE, aunque incomode:
   · el MÍNIMO de producción. Una Biblia con el logo de una iglesia se
@@ -37,6 +44,7 @@ from __future__ import annotations
 
 import io
 import json
+from functools import lru_cache
 from pathlib import Path
 
 import pandas as pd
@@ -53,7 +61,7 @@ RUTA_PRECIOS = ESTADO_DIR / ARCHIVO_PRECIOS
 RUTA_ADICIONALES = ESTADO_DIR / ARCHIVO_ADICIONALES
 
 # Lista SIMULADA para probar el cotizador. Viaja en el repo; no es la
-# lista oficial y la app lo anuncia mientras esté activa.
+# lista oficial, rige SOLO mientras no se cargue una, y la app lo anuncia.
 RUTA_LISTA_PRUEBA = ROOT / "data" / "semilla" / "precios_simulados.xlsx"
 
 # Nombres de columna: fuente única. Cualquier módulo los IMPORTA en vez de
@@ -85,12 +93,49 @@ def _leer(ruta: Path, clave: str, columnas: list[str]) -> pd.DataFrame:
     return pd.DataFrame(columns=columnas) if faltan else df
 
 
-def leer_precios() -> pd.DataFrame:
+def _precios_oficiales() -> pd.DataFrame:
+    """La lista que cargó comercial (en disco o en la nube); vacía si no hay."""
     return _leer(RUTA_PRECIOS, ARCHIVO_PRECIOS, COLS_PRECIOS)
 
 
+@lru_cache(maxsize=2)
+def _leer_prueba(ruta: str, _mtime: float) -> tuple:
+    """
+    La lista simulada, leída y VALIDADA por el mismo camino que una lista
+    real (_interpretar). Se memoriza por fecha del archivo: no se vuelve a
+    abrir el Excel en cada toque. Si no pasara la validación, se devuelve
+    vacía (y la auditoría falla, que es donde se tiene que ver).
+    """
+    precios, adic, _error = _interpretar(Path(ruta).read_bytes(), Path(ruta).name)
+    if precios is None:
+        return (pd.DataFrame(columns=COLS_PRECIOS), pd.DataFrame(columns=COLS_ADICIONALES))
+    return precios, adic
+
+
+def _lista_prueba() -> tuple[pd.DataFrame, pd.DataFrame]:
+    """(precios, agregados) de la lista simulada, como COPIAS (lo memorizado
+    no se entrega: quien lo modificara cambiaría la lista de todos)."""
+    if not RUTA_LISTA_PRUEBA.exists():
+        return pd.DataFrame(columns=COLS_PRECIOS), pd.DataFrame(columns=COLS_ADICIONALES)
+    precios, adic = _leer_prueba(str(RUTA_LISTA_PRUEBA), RUTA_LISTA_PRUEBA.stat().st_mtime)
+    return precios.copy(), adic.copy()
+
+
+def leer_precios() -> pd.DataFrame:
+    """La lista oficial; si no hay, la simulada (la pantalla lo anuncia)."""
+    oficial = _precios_oficiales()
+    return oficial if not oficial.empty else _lista_prueba()[0]
+
+
 def leer_adicionales() -> pd.DataFrame:
-    return _leer(RUTA_ADICIONALES, ARCHIVO_ADICIONALES, COLS_ADICIONALES)
+    """
+    Los agregados VAN CON SU LISTA: con lista oficial, los de la oficial
+    (aunque no tenga ninguno); sin ella, los de la simulada. Nunca se
+    mezclan precios de una con agregados de la otra.
+    """
+    if not _precios_oficiales().empty:
+        return _leer(RUTA_ADICIONALES, ARCHIVO_ADICIONALES, COLS_ADICIONALES)
+    return _lista_prueba()[1]
 
 
 def hay_precios() -> bool:
@@ -136,23 +181,16 @@ def _validar_adicionales(adic: pd.DataFrame) -> tuple[pd.DataFrame | None, str]:
     return adic.reset_index(drop=True), ""
 
 
-def cargar_tabla(datos: bytes, nombre_archivo: str, usuario: str,
-                 simulada: bool = False) -> tuple[bool, str]:
+def _interpretar(datos: bytes, nombre_archivo: str
+                 ) -> tuple[pd.DataFrame | None, pd.DataFrame | None, str]:
     """
-    Carga la lista de precios (hoja 'precios') y sus agregados (hoja
-    'adicionales') desde un Excel, o solo los precios desde un CSV.
+    Lee y VALIDA una lista (hoja 'precios' y hoja opcional 'adicionales'
+    de un Excel, o solo precios desde un CSV). No escribe nada.
 
-    TODO O NADA: se valida todo antes de escribir. Una lista mal cargada no
-    rompe la app: cotiza mal, que es peor, porque nadie se da cuenta hasta
-    que el cliente reclama.
-
-    Cargar una lista REEMPLAZA también sus agregados. Si la lista nueva no
-    trae hoja de agregados, los anteriores se borran: los agregados son
-    parte de la lista, y los de una lista de prueba no pueden sobrevivir a
-    la oficial.
-
-    simulada=True marca la lista como DE PRUEBA: la pantalla pública lo
-    anuncia y la solicitud que se envía lo dice en la primera línea.
+    Devuelve (precios, agregados, "") o (None, None, motivo del rechazo).
+    Es el único camino de entrada de una lista: la oficial que carga
+    comercial y la simulada que viaja en el repositorio pasan por las
+    mismas validaciones.
     """
     ext = Path(nombre_archivo).suffix.lower()
     try:
@@ -164,16 +202,16 @@ def cargar_tabla(datos: bytes, nombre_archivo: str, usuario: str,
             df = pd.read_csv(io.BytesIO(datos), sep=None, engine="python")
             adic = None
         else:
-            return False, f"No sé leer '{ext}'. Usá .xlsx o .csv."
+            return None, None, f"No sé leer '{ext}'. Usá .xlsx o .csv."
     except Exception as e:
-        return False, f"No se pudo abrir el archivo: {e}"
+        return None, None, f"No se pudo abrir el archivo: {e}"
 
     df.columns = [str(c).strip().lower() for c in df.columns]
     faltan = [c for c in COLS_PRECIOS if c not in df.columns]
     if faltan:
-        return False, ("A la tabla le faltan columnas: " + ", ".join(faltan)
-                       + ". Descargá la plantilla y llenala sin cambiar los "
-                         "encabezados.")
+        return None, None, ("A la tabla le faltan columnas: " + ", ".join(faltan)
+                            + ". Descargá la plantilla y llenala sin cambiar los "
+                              "encabezados.")
     df = df[COLS_PRECIOS].dropna(how="all").copy()
 
     # Tipos: los precios y cantidades tienen que ser números de verdad.
@@ -181,17 +219,36 @@ def cargar_tabla(datos: bytes, nombre_archivo: str, usuario: str,
         df[col] = pd.to_numeric(df[col], errors="coerce")
     malas = df[df[["desde_cantidad", "precio_unitario", "minimo"]].isna().any(axis=1)]
     if not malas.empty:
-        return False, (f"{len(malas)} fila(s) tienen cantidad o precio que no "
-                       "es un número. Revisá que no haya '$', puntos de miles "
-                       "ni celdas vacías.")
+        return None, None, (f"{len(malas)} fila(s) tienen cantidad o precio que no "
+                            "es un número. Revisá que no haya '$', puntos de miles "
+                            "ni celdas vacías.")
     if (df["precio_unitario"] <= 0).any():
-        return False, "Hay precios en cero o negativos. Corregí la tabla."
+        return None, None, "Hay precios en cero o negativos. Corregí la tabla."
 
     adic_limpia = pd.DataFrame(columns=COLS_ADICIONALES)
     if adic is not None and not adic.dropna(how="all").empty:
         adic_limpia, error = _validar_adicionales(adic)
         if adic_limpia is None:
-            return False, error + " No se guardó nada."
+            return None, None, error + " No se guardó nada."
+    return df.reset_index(drop=True), adic_limpia, ""
+
+
+def cargar_tabla(datos: bytes, nombre_archivo: str, usuario: str) -> tuple[bool, str]:
+    """
+    Carga la lista OFICIAL de precios y sus agregados.
+
+    TODO O NADA: se valida todo antes de escribir. Una lista mal cargada no
+    rompe la app: cotiza mal, que es peor, porque nadie se da cuenta hasta
+    que el cliente reclama.
+
+    Cargar una lista REEMPLAZA también sus agregados. Si la lista nueva no
+    trae hoja de agregados, los anteriores se borran: los agregados son
+    parte de la lista. Desde que hay lista oficial, la simulada deja de
+    usarse sola.
+    """
+    df, adic_limpia, error = _interpretar(datos, nombre_archivo)
+    if df is None:
+        return False, error
 
     # ── Escritura: precios y agregados juntos ───────────────────────
     ESTADO_DIR.mkdir(parents=True, exist_ok=True)
@@ -205,43 +262,26 @@ def cargar_tabla(datos: bytes, nombre_archivo: str, usuario: str,
         ok = nube.subir_archivo(RUTA_ADICIONALES,
                                 nube.clave_estado(ARCHIVO_ADICIONALES)) and ok
 
+    # "simulada": False borra la marca que dejaba la v2.3.0 cuando la
+    # lista de prueba se cargaba como si fuera un archivo más.
     guardar_parametros({"ultima_carga": sello_ahora(), "usuario": usuario,
-                        "filas": int(len(df)), "simulada": bool(simulada)})
-    tipo = "de PRUEBA" if simulada else "oficial"
+                        "filas": int(len(df)), "simulada": False})
     msg_adic = (f" y {len(adic_limpia)} agregado(s)" if not adic_limpia.empty
                 else " (sin agregados)")
     estado_nube = "" if ok else " OJO: no se pudo respaldar en la nube."
-    return True, (f"Lista {tipo} cargada: {len(df)} combinaciones de precio"
+    return True, (f"Lista oficial cargada: {len(df)} combinaciones de precio"
                   f"{msg_adic}." + estado_nube)
 
 
-def borrar_lista() -> str:
-    """
-    Quita la lista activa (precios y agregados). Se usa para retirar la
-    lista de prueba; la oficial se reemplaza cargando otra, no se borra.
-    """
-    for ruta, archivo in ((RUTA_PRECIOS, ARCHIVO_PRECIOS),
-                          (RUTA_ADICIONALES, ARCHIVO_ADICIONALES)):
-        ruta.unlink(missing_ok=True)
-        nube.eliminar(nube.clave_estado(archivo))
-    guardar_parametros({"simulada": False, "filas": 0})
-    return "Lista retirada. El cotizador vuelve a enviar solicitudes sin precio."
-
-
 def es_simulada() -> bool:
-    """True si la lista activa es la de prueba."""
-    return bool(leer_parametros().get("simulada")) and hay_precios()
-
-
-def cargar_lista_de_prueba(usuario: str) -> tuple[bool, str]:
     """
-    Carga la lista SIMULADA que viaja en el repositorio, por el mismo camino
-    y con la misma validación que una lista real.
+    True si lo que se está cotizando son precios de PRUEBA: no hay lista
+    oficial (rige la simulada), o la guardada es la de prueba que la
+    v2.3.0 cargaba como archivo (queda marcada en los parámetros).
     """
-    if not RUTA_LISTA_PRUEBA.exists():
-        return False, f"No encuentro la lista de prueba ({RUTA_LISTA_PRUEBA.name})."
-    return cargar_tabla(RUTA_LISTA_PRUEBA.read_bytes(), RUTA_LISTA_PRUEBA.name,
-                        usuario, simulada=True)
+    if _precios_oficiales().empty:
+        return hay_precios()
+    return bool(leer_parametros().get("simulada"))
 
 
 def plantilla_csv() -> bytes:
