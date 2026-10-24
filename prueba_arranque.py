@@ -265,6 +265,51 @@ try:
 finally:
     cotizador.ESTADO_DIR, cotizador.RUTA_PRECIOS, cotizador.RUTA_ADICIONALES = _orig
 
+print("\n═══ CONVERSAR: TRES PREGUNTAS SUGERIDAS (v2.4) ═══")
+# Con un documento público de prueba en una carpeta temporal y sin modelo
+# (modo búsqueda): la respuesta sale de los fragmentos y las sugerencias,
+# de sus títulos.
+from nucleo import indice as _ind  # noqa: E402
+from nucleo.sugerencias import parecidas as _parecidas  # noqa: E402
+
+_tmp2 = Path(tempfile.mkdtemp(prefix="conversar_prueba_"))
+_orig_ind = (_ind.DOCS_DIR, _ind.ESTADO_DIR, _ind.RUTA_REGISTRO, _ind.RUTA_CHUNKS)
+_ind.DOCS_DIR, _ind.ESTADO_DIR = _tmp2 / "documentos", _tmp2 / "estado"
+_ind.RUTA_REGISTRO = _ind.ESTADO_DIR / "registro.json"
+_ind.RUTA_CHUNKS = _ind.ESTADO_DIR / "fragmentos.parquet"
+for _d in (_ind.DOCS_DIR, _ind.ESTADO_DIR):
+    _d.mkdir(parents=True, exist_ok=True)
+_TEMAS = ["Qué es la Septuaginta", "Quién tradujo la Septuaginta",
+          "Por qué la Septuaginta tiene más libros", "Cómo citan la Septuaginta los evangelios",
+          "Qué es la Vulgata", "Qué es la Biblia del Oso"]
+_DOC = "\n\n".join(
+    f"## {i + 1}. ¿{tema}?\n" + (f"Respuesta de prueba sobre {tema.lower()}: la Septuaginta, "
+                                 "las traducciones antiguas y la historia del texto bíblico. ") * 6
+    for i, tema in enumerate(_TEMAS))
+try:
+    _ind.indexar_documento("preguntas_prueba.md", _DOC.encode("utf-8"), "prueba",
+                           ambito=_ind.AMBITO_PUBLICO)
+    at = _correr(PAGINAS / "conversar.py")
+    at.chat_input[0].set_value("¿Qué es la Septuaginta?").run()
+    _sug_b = [b for b in at.button if b.key.startswith("_conv_sug_")]
+    check("Después de responder aparecen tres preguntas sugeridas",
+          len(_sug_b) == 3 and not at.exception,
+          str(at.exception) or f"aparecieron {len(_sug_b)}")
+    check("Ninguna sugerencia repite la pregunta recién hecha",
+          all(not _parecidas(b.label, "¿Qué es la Septuaginta?") for b in _sug_b),
+          str([b.label for b in _sug_b]))
+    _elegida = _sug_b[0].label if _sug_b else ""
+    if _sug_b:
+        _sug_b[0].click().run()
+    _usuario = [m for m in at.chat_message if m.name == "user"]
+    check("Tocar una sugerencia la pregunta, como si se hubiera escrito",
+          len(_usuario) == 2 and _elegida in str(_usuario[-1].markdown[0].value))
+    check("Solo quedan las sugerencias de la última respuesta (no se acumulan)",
+          len([b for b in at.button if b.key.startswith("_conv_sug_")]) == 3
+          and not at.exception, str(at.exception))
+finally:
+    _ind.DOCS_DIR, _ind.ESTADO_DIR, _ind.RUTA_REGISTRO, _ind.RUTA_CHUNKS = _orig_ind
+
 print("\n" + "═" * 60)
 if _FALLOS:
     print(f"FALLARON {len(_FALLOS)} pruebas\n")

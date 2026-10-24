@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import json
 import math
+import re
 from pathlib import Path
 
 import pandas as pd
@@ -141,6 +142,10 @@ def _ubicacion(texto: str) -> str:
     return f"{m.group(1)} {m.group(2).strip()}" if m else ""
 
 
+# Un título de Markdown al comienzo del párrafo («## 12. ¿Qué es…?»).
+_ES_TITULO = re.compile(r"^#{1,6}\s")
+
+
 def trocear(texto: str) -> list[str]:
     """
     Parte el texto en fragmentos de ~TAM_FRAGMENTO caracteres respetando
@@ -148,6 +153,13 @@ def trocear(texto: str) -> list[str]:
 
     POR QUÉ el solape: sin él, una idea que cae justo en el corte queda
     partida y ninguno de los dos fragmentos la responde completa.
+
+    POR QUÉ NO hay solape delante de un título (v2.4.0): un título empieza
+    una idea nueva, y la cola del fragmento anterior es el final de OTRA
+    cosa. En los documentos de preguntas, la respuesta sobre la soledad
+    empezaba con la cita final de la pregunta anterior, sobre el miedo:
+    en modo búsqueda era lo primero que se leía, y la búsqueda podía
+    elegir ese fragmento por palabras que no eran suyas.
     """
     if not texto or not texto.strip():
         return []
@@ -168,7 +180,8 @@ def trocear(texto: str) -> list[str]:
         else:
             if actual:
                 fragmentos.append(actual.strip())
-            cola = actual[-SOLAPE_FRAGMENTO:] if actual else ""
+            cola = (actual[-SOLAPE_FRAGMENTO:]
+                    if actual and not _ES_TITULO.match(p) else "")
             actual = (cola + "\n\n" + p).strip() if cola else p
     if actual.strip():
         fragmentos.append(actual.strip())

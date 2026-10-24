@@ -102,14 +102,23 @@ def raiz_ligera(palabra: str) -> str:
     quede raro ("analisis" → "analisi"), los dos lados quedan iguales y
     el cruce funciona. Lo que NO hace: tocar números ni códigos, ni
     adivinar familias de palabras ("juventud" no se vuelve "joven").
+
+    Dos pasos, en este orden (v2.4.0):
+      1. se quita la 's' final de las palabras largas;
+      2. se quita la 'e' final, quede de donde quede.
+    El paso 2 es el que une 'padre' con 'padres' (las dos → 'padr'),
+    'mujer' con 'mujeres' ('mujere' → 'mujer') y 'ley' con 'leyes'
+    ('leye' → 'ley'). Hasta la v2.3.1 se quitaba 'es' de golpe: 'padres'
+    quedaba 'padr' y 'padre' seguía 'padre', así que preguntar por
+    «clientes» no encontraba un párrafo que dijera «el cliente».
     """
     p = palabra
     if any(c.isdigit() for c in p):
         return p                      # '0001', ISBN y cifras van intactos
-    if len(p) > 5 and p.endswith("es"):
-        return p[:-2]
     if len(p) > 4 and p.endswith("s") and not p.endswith("ss"):
-        return p[:-1]
+        p = p[:-1]
+    if len(p) >= 4 and p.endswith("e"):
+        p = p[:-1]
     return p
 
 

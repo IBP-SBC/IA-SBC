@@ -106,6 +106,19 @@ check("Singular y plural se buscan igual",
       "'jóvenes' no encontraría un párrafo que dice 'el joven'")
 check("El recorte de plurales NO toca los códigos",
       util.raiz_ligera("9786287835641") == "9786287835641")
+# Caso real (v2.4.0): «puedo hacerme un tatuaje» no encontraba la respuesta
+# que hablaba de «los tatuajes». Todo par singular/plural del español
+# común tiene que caer en la misma raíz, también los terminados en -e.
+_PARES_PLURAL = [("tatuaje", "tatuajes"), ("padre", "padres"),
+                 ("cliente", "clientes"), ("nombre", "nombres"),
+                 ("mujer", "mujeres"), ("joven", "jóvenes"), ("ley", "leyes"),
+                 ("rey", "reyes"), ("mes", "meses"), ("nación", "naciones"),
+                 ("estudio", "estudios"), ("virtud", "virtudes"),
+                 ("Dios", "dioses"), ("iglesia", "iglesias")]
+_pares_mal = [f"{a}/{b}" for a, b in _PARES_PLURAL
+              if util.tokenizar(a)[0] != util.tokenizar(b)[0]]
+check("Singular y plural caen en la misma raíz (también los terminados en -e)",
+      not _pares_mal, f"no se unen: {_pares_mal}")
 
 print("\n═══ 2-bis. EXTENSIÓN vs CONTENIDO REAL ═══")
 # Caso real: varios 'PDF' de la SBC son por dentro archivos de Office.
@@ -129,6 +142,20 @@ check("Ningún fragmento excede el tamaño configurado",
 check("No se pierde contenido en el troceo",
       "41.386.063.026" in " ".join(frags),
       "una cifra del texto original desapareció al trocear")
+# Caso real (v2.4.0): en los documentos de preguntas, cada respuesta
+# empezaba con el final de la anterior (el solape). Un título empieza un
+# fragmento limpio; el texto corrido sigue llevando su solape.
+_qa = "\n\n".join(f"## {i}. ¿Pregunta número {i}?\n" + (f"respuesta{i} " * 70).strip()
+                  for i in range(1, 5))
+_fq = indice.trocear(_qa)
+check("Un fragmento que empieza en un título no arrastra la cola del anterior",
+      len(_fq) == 4 and all(f.startswith(f"## {i}.") for i, f in enumerate(_fq, 1)),
+      f"inicios: {[f[:12] for f in _fq]}")
+_corrido = "\n\n".join(("palabra%d " % i) * 90 for i in range(1, 4))
+_fc = indice.trocear(_corrido)
+check("El texto sin títulos conserva el solape entre fragmentos",
+      len(_fc) >= 2 and _fc[1].startswith(_fc[0][-config.SOLAPE_FRAGMENTO:].strip()[:40]),
+      "sin solape, una idea partida en el corte no la responde ningún fragmento")
 
 print("\n═══ 4. INDEXADO Y UPSERT POR NOMBRE ═══")
 r1 = indice.indexar_documento("Plan prueba.txt", TEXTO_PRUEBA.encode("utf-8"), "auditoria")
@@ -656,6 +683,34 @@ for _ in range(3):
 check("Un error de RED no se recuerda como 'no existe' (puede ser pasajero)",
       _llamadas["get"] == 3,
       "dar por inexistente un archivo que sí existe es el patrón que borró histórico")
+
+print("\n═══ 7-quinquies. PREGUNTAS SUGERIDAS (v2.4) ═══")
+# Opción A, elegida por la SBC: salen de los títulos de los documentos que
+# se usaron para responder. No cuestan nada y siempre tienen respuesta.
+from nucleo import sugerencias as _sug  # noqa: E402
+
+_frs = [
+    "…final de la respuesta anterior.\n\n## 4. ¿Cuántos libros tiene la Biblia?\nRespuesta…",
+    "## 5. ¿Qué son los libros deuterocanónicos?\nRespuesta…\n\n"
+    "## 6. ¿Cómo se decidió qué libros forman la Biblia?\nRespuesta…",
+    "## 13. ¿Qué es la Septuaginta?\nRespuesta…",
+    "## 5. ¿Qué son los libros deuterocanónicos?\nLa misma, en otro fragmento.",
+]
+_s = _sug.sugerir(_frs, "¿Por qué hay Biblias con más libros?", [], ["¿Qué es la fe?"])
+check("Sugiere tres preguntas tomadas de los títulos de los documentos usados",
+      _s == ["¿Qué son los libros deuterocanónicos?",
+             "¿Cómo se decidió qué libros forman la Biblia?", "¿Qué es la Septuaginta?"], str(_s))
+check("No sugiere lo que se acaba de responder (el fragmento más parecido)",
+      "¿Cuántos libros tiene la Biblia?" not in _s)
+_s2 = _sug.sugerir(_frs, "algo", ["¿Qué es la Septuaginta?"], ["¿Qué es la fe?", "¿Qué es la gracia?"])
+check("No repite lo que la persona ya preguntó y completa con las de respaldo",
+      "¿Qué es la Septuaginta?" not in _s2 and len(_s2) == 3 and _s2[-1] == "¿Qué es la fe?", str(_s2))
+check("Reconoce la misma pregunta escrita distinto, sin juntar preguntas distintas",
+      _sug.parecidas("¿Qué es la fe según la Biblia?", "que es la FE")
+      and not _sug.parecidas("¿Qué es la fe?", "¿Qué es la gracia?"))
+check("Sin documentos (o en modo búsqueda vacío) igual salen las de respaldo",
+      _sug.sugerir([], "hola", [], ["¿Qué es la fe?", "¿Qué es la gracia?", "¿Quién fue Pablo?"])
+      == ["¿Qué es la fe?", "¿Qué es la gracia?", "¿Quién fue Pablo?"])
 
 print("\n═══ 8. ARQUITECTURA ═══")
 _fuentes_nucleo = list((RAIZ / "src/nucleo").rglob("*.py"))

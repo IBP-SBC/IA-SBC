@@ -24,7 +24,7 @@ from pathlib import Path
 # ── Identidad ────────────────────────────────────────────────────────
 APP_NOMBRE = "IA · SBC"
 APP_SUBTITULO = "Sociedad Bíblica Colombiana"
-APP_VERSION = "2.3.1"
+APP_VERSION = "2.4.0"
 
 # ── Rutas locales ────────────────────────────────────────────────────
 # parents[2] = raíz del repo (src/nucleo/config.py → src/ → raíz)
@@ -58,7 +58,7 @@ MODELO_DEFECTO_ANTHROPIC = "claude-sonnet-5"
 # OJO: el nombre por defecto es solo un punto de partida. Google renombra,
 # retira y balancea modelos con frecuencia, y un modelo puede estar en la
 # lista y aun así no atender conversación. Por eso el modelo se elige y se
-# PRUEBA desde Documentos → Mantenimiento, sin tocar los Secrets.
+# PRUEBA desde Configuración → Modelo, sin tocar los Secrets.
 MODELO_DEFECTO_GOOGLE = "gemini-flash-latest"
 BASE_GOOGLE_OPENAI = "https://generativelanguage.googleapis.com/v1beta/openai"
 

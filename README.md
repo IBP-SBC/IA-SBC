@@ -43,7 +43,7 @@ IA-SBC/
 ├── main.md                  ← instrucciones generales (editables en la app)
 ├── requirements.txt
 ├── validar_ast.py           ← valida el código (NameError, keys duplicadas)
-├── auditoria_iasbc.py       ← 39 checks de que los datos signifiquen lo correcto
+├── auditoria_iasbc.py       ← 175 checks de que los datos signifiquen lo correcto
 ├── prueba_arranque.py       ← AppTest: cada página abre sin trunar
 ├── .streamlit/config.toml   ← sin [theme] (forzaría el modo claro)
 ├── data/                    ← VACÍO en el repo; los datos viven en Supabase
@@ -87,6 +87,23 @@ volver a romperse, se agrega un check a `auditoria_iasbc.py`.
 ---
 
 ## Versiones
+
+- **2.4.0** — Conversar: después de cada respuesta aparecen **tres preguntas
+  sugeridas** para seguir. Salen de los títulos de los documentos que se
+  usaron para responder (opción elegida por la SBC): no cuestan nada extra,
+  funcionan sin modelo y siempre tienen respuesta en lo cargado. No repiten
+  lo que la persona ya preguntó, y solo se muestran bajo la última
+  respuesta. Instrucciones (main.md): **postura interconfesional** de la
+  SBC, respuestas desde las ciencias bíblicas, citas en RVR1960 solo si el
+  texto está en los documentos. Búsqueda: el recorte de plurales que
+  escribí en la v1.0 **no unía singular y plural en las palabras
+  terminadas en -e** («tatuaje» no encontraba «tatuajes», «cliente» no
+  encontraba «clientes»; tampoco «ley» y «leyes», «rey» y «reyes», «mes» y
+  «meses»). Ahora caen en la misma raíz; un check con 14 pares lo vigila.
+  Troceo: el solape entre fragmentos **ya no se pone delante de un
+  título**; en los documentos de preguntas, cada respuesta empezaba con el
+  final de la anterior. Para que los documentos ya cargados tomen el
+  troceo nuevo: Configuración → Modelo → Reconstruir el índice.
 
 - **2.3.1** — Acceso: la app confundía **Secrets ilegibles** (comillas
   curvas al pegarlos desde el iPad, un bloque repetido) con "no hay
